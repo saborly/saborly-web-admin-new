@@ -1,0 +1,3438 @@
+'use client';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
+import {
+  LayoutDashboard,
+  Package,
+  ShoppingBag,
+  Users,
+  Percent,
+  Settings,
+  Plus,
+  Edit3,
+  Trash2,
+  Search,
+  Upload,
+  X,
+  Star,
+  DollarSign,
+  TrendingUp,
+  Grid3X3,
+  Menu as MenuIcon,
+  Bell,
+  LogOut,
+  Loader2,
+  Save,
+  Eye,
+  MessageSquare,
+  Image as ImageIcon,
+  Check,
+  AlertTriangle,
+  RefreshCw,
+  AlertCircle,
+  ChevronDown,
+  MoreVertical,
+  Filter,
+  Calendar,
+  Clock,
+  MapPin,
+  Phone,
+  Euro,
+  PhoneCallIcon,
+  LocationEdit,
+} from 'lucide-react';
+import { useRouter } from "next/navigation";
+import { useSearchParams } from 'next/navigation';
+import { useDebounce } from 'use-debounce';
+import { useRef } from 'react';
+import { MenuItemsGrid } from './MenuItemsSection';
+import { OrdersGrid } from './OrdersSection';
+import AdminShell from './AdminShell';
+import { adminNavigation } from './navigationConfig';
+
+const languages = [
+  { code: 'en', label: 'English' },
+  { code: 'es', label: 'Español' },
+  { code: 'ca', label: 'Català' },
+  { code: 'ar', label: 'العربية' },
+  { code: 'fr', label: 'Français' }, // Added French
+];
+
+const quickHighlightsTemplate = (stats, formatCurrencyFn) => ([
+  {
+    label: 'Monthly revenue',
+    value: formatCurrencyFn(stats.revenue.current || 0),
+    hint: `${stats.revenue.period || 'month'} • +${stats.revenue.growth || 0}%`,
+  },
+  {
+    label: 'Orders this week',
+    value: stats.orders.current?.toLocaleString() || '0',
+    hint: `${stats.orders.period || 'week'} • +${stats.orders.growth || 0}%`,
+  },
+  {
+    label: 'Active customers',
+    value: stats.customers.current?.toLocaleString() || '0',
+    hint: `${stats.customers.period || 'month'} • +${stats.customers.growth || 0}%`,
+  },
+  {
+    label: 'Live offers',
+    value: stats.activeOffers.current?.toString().padStart(2, '0') || '00',
+    hint: `Now running • +${stats.activeOffers.growth || 0}%`,
+  },
+]);
+
+const panelShellClass = 'glass-panel rounded-3xl border border-white/70 bg-white/95 shadow-xl';
+const sectionHeadingClass = 'text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400';
+const inputBaseClass =
+  'w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-900 focus:border-slate-500 focus:ring-2 focus:ring-slate-900/10 outline-none transition disabled:bg-slate-50 disabled:text-slate-400';
+const primaryButtonClass =
+  'inline-flex items-center gap-2 rounded-2xl px-5 py-3 text-sm font-semibold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 bg-slate-900 text-white hover:bg-slate-800 focus-visible:outline-slate-900 disabled:opacity-50 disabled:cursor-not-allowed';
+const secondaryButtonClass =
+  'inline-flex items-center gap-2 rounded-2xl px-5 py-3 text-sm font-semibold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 bg-slate-100 text-slate-700 hover:bg-slate-200 focus-visible:outline-slate-300';
+const ghostButtonClass =
+  'inline-flex items-center gap-2 rounded-2xl px-5 py-3 text-sm font-semibold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 text-slate-500 hover:bg-slate-100 focus-visible:outline-slate-300';
+const highlightIconMap = {
+  'Monthly revenue': Euro,
+  'Orders this week': ShoppingBag,
+  'Active customers': Users,
+  'Live offers': Percent,
+};
+const statusChipClass =
+  'inline-flex items-center gap-2 rounded-full border border-white/50 bg-white/70 px-3 py-1 text-xs font-semibold text-slate-600 shadow-sm';
+
+// API Configuration
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://soleybackend.vercel.app/api/v1';
+
+// API Service Class
+class ApiService {
+  constructor() {
+    this.token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
+    this.language = typeof window !== 'undefined' ? localStorage.getItem('language') || 'en' : 'en';
+  }
+
+  setLanguage(lang) {
+    this.language = lang;
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('language', lang);
+    }
+  }
+
+  async request(endpoint, options = {}) {
+    const url = `${API_BASE_URL}${endpoint}`;
+    const config = {
+      headers: {
+        'Content-Type': 'application/json',
+        ...(this.token && { Authorization: `Bearer ${this.token}` }),
+        'Accept-Language': this.language,
+        ...options.headers,
+      },
+      ...options,
+    };
+
+    try {
+      const response = await fetch(url, config);
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'API request failed');
+      }
+
+      return data;
+    } catch (error) {
+      console.error('API Error:', error);
+      throw error;
+    }
+  }
+
+  // Auth methods
+  setToken(token) {
+    this.token = token;
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('authToken', token);
+    }
+  }
+
+  // Vercel Blob Upload
+  async uploadToVercelBlob(file) {
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const response = await fetch('/api/upload', {
+        method: 'POST',
+        headers: {
+          ...(this.token && { Authorization: `Bearer ${this.token}` }),
+        },
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to upload image');
+      }
+
+      const data = await response.json();
+      return data.url;
+    } catch (error) {
+      console.error('Upload error:', error);
+      throw error;
+    }
+  }
+
+  // Categories API
+  async createCategory(data) {
+    return this.request('/categories', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateCategory(id, data) {
+    return this.request(`/categories/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async getDeliverySettings() {
+    return this.request('/settings/delivery');
+  }
+
+  async updateDeliverySettings(data) {
+    return this.request('/settings/delivery', {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async toggleDeliveryStatus(enabled, disabledMessage) {
+    return this.request('/settings/delivery/toggle', {
+      method: 'PATCH',
+      body: JSON.stringify({ isEnabled: enabled, disabledMessage }),
+    });
+  }
+
+  async getCategories(params = {}) {
+    const query = new URLSearchParams(params).toString();
+    return this.request(`/categories${query ? `?${query}` : ''}`);
+  }
+
+  async getBanners(params = {}) {
+    const queryString = new URLSearchParams(params).toString();
+    return this.request(`/banners/getall${queryString ? `?${queryString}` : ''}`);
+  }
+
+  async getBanner(id) {
+    return this.request(`/banners/${id}`);
+  }
+
+  async createBanner(data) {
+    return this.request('/banners', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateBanner(id, data) {
+    return this.request(`/banners/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteBanner(id) {
+    return this.request(`/banners/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async toggleBannerStatus(id) {
+    return this.request(`/banners/${id}/toggle-status`, {
+      method: 'PATCH',
+    });
+  }
+
+  async reorderBanners(bannerOrders) {
+    return this.request('/banners/reorder', {
+      method: 'POST',
+      body: JSON.stringify({ bannerOrders }),
+    });
+  }
+
+  async deleteCategory(id) {
+    console.log('Deleting category with ID:', id);
+    return this.request(`/categories/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  // Offers API
+  async getOffers(params = {}) {
+    const queryString = new URLSearchParams(params).toString();
+    return this.request(`/offer${queryString ? `?${queryString}` : ''}`);
+  }
+
+  async getItemsWithOffers() {
+    return this.request('/offer/items-with-offers');
+  }
+
+  getLocalized(lang) {
+    return {
+      ...this,
+      name: this.name && typeof this.name === 'object' ? this.name[lang] || this.name.en || 'Unnamed' : 'Unnamed',
+      description: this.description && typeof this.description === 'object' ? this.description[lang] || this.description.en || 'No description' : 'No description',
+    };
+  }
+
+  async createOffer(data) {
+    return this.request('/offer', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateOffer(id, data) {
+    return this.request(`/offer/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteOffer(id) {
+    return this.request(`/offer/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async applyOfferToItems(offerId, itemIds) {
+    return this.request(`/offer/${offerId}/apply-to-items`, {
+      method: 'POST',
+      body: JSON.stringify({ itemIds }),
+    });
+  }
+
+  async removeOfferFromItems(offerId, itemIds) {
+    return this.request(`/offer/${offerId}/remove-from-items`, {
+      method: 'DELETE',
+      body: JSON.stringify({ itemIds }),
+    });
+  }
+
+  // Food Items API
+  async getFoodItems(params = {}) {
+    const queryString = new URLSearchParams(params).toString();
+    return this.request(`/food-items/getallitems${queryString ? `?${queryString}` : ''}`);
+  }
+
+  async getFoodItem(id) {
+    return this.request(`/food-items/${id}`);
+  }
+
+  async createFoodItem(data) {
+    return this.request('/food-items', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateFoodItem(id, data) {
+    return this.request(`/food-items/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteFoodItem(id) {
+    console.log("Deleting food item:", id)
+    return this.request(`/food-items/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async updateStock(id, quantity, operation) {
+    return this.request(`/food-items/${id}/stock`, {
+      method: 'PATCH',
+      body: JSON.stringify({ quantity, operation }),
+    });
+  }
+
+  // Orders API
+  async getOrders(params = {}) {
+    const queryString = new URLSearchParams(params).toString();
+    return this.request(`/orders/getall${queryString ? `?${queryString}` : ''}`);
+  }
+
+  async updateOrderStatus(id, status, message) {
+    return this.request(`/orders/${id}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status, message }),
+    });
+  }
+
+  async getOrderStats(params = {}) {
+    const queryString = new URLSearchParams(params).toString();
+    return this.request(`/orders/stats${queryString ? `?${queryString}` : ''}`);
+  }
+
+  // Settings API
+  async getSettings() {
+    return this.request('/settings');
+  }
+
+  async updateSettings(data) {
+    return this.request('/settings', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+}
+
+// Enhanced Confirmation Dialog Component
+const ConfirmDialog = ({ isOpen, onClose, onConfirm, title, message, confirmText = "Delete", cancelText = "Cancel", type = "danger" }) => {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+      <div className="bg-white rounded-3xl max-w-md w-full shadow-2xl transform transition-all border-0 overflow-hidden">
+        <div className="p-8 text-center">
+          <div className={`mx-auto w-16 h-16 rounded-full flex items-center justify-center mb-6 ${type === 'danger' ? 'bg-red-50' : 'bg-amber-50'
+            }`}>
+            {type === 'danger' ? (
+              <AlertTriangle className="w-8 h-8 text-red-600" />
+            ) : (
+              <AlertCircle className="w-8 h-8 text-amber-600" />
+            )}
+          </div>
+          <h3 className="text-xl font-semibold text-gray-900 mb-3">{title}</h3>
+          <p className="text-gray-600 mb-8 leading-relaxed">{message}</p>
+          <div className="flex gap-3">
+            <button
+              onClick={onClose}
+              className="flex-1 px-6 py-3 text-gray-700 bg-gray-100 rounded-xl hover:bg-gray-200 font-medium transition-all duration-200 hover:scale-[0.98]"
+            >
+              {cancelText}
+            </button>
+            <button
+              onClick={onConfirm}
+              className={`flex-1 px-6 py-3 text-white rounded-xl font-medium transition-all duration-200 hover:scale-[0.98] shadow-lg ${type === 'danger'
+                ? 'bg-red-600 hover:bg-red-700 shadow-red-200'
+                : 'bg-amber-600 hover:bg-amber-700 shadow-amber-200'
+                }`}
+            >
+              {confirmText}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Enhanced Success/Error Dialog Component
+const NotificationDialog = ({ isOpen, onClose, title, message, type = "success" }) => {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+      <div className="bg-white rounded-3xl max-w-md w-full shadow-2xl transform transition-all border-0 overflow-hidden">
+        <div className="p-8 text-center">
+          <div className={`mx-auto w-16 h-16 rounded-full flex items-center justify-center mb-6 ${type === 'success' ? 'bg-emerald-50' : 'bg-red-50'
+            }`}>
+            {type === 'success' ? (
+              <Check className="w-8 h-8 text-emerald-600" />
+            ) : (
+              <AlertTriangle className="w-8 h-8 text-red-600" />
+            )}
+          </div>
+          <h3 className="text-xl font-semibold text-gray-900 mb-3">{title}</h3>
+          <p className="text-gray-600 mb-8 leading-relaxed">{message}</p>
+          <button
+            onClick={onClose}
+            className={`w-full px-6 py-3 text-white rounded-xl font-medium transition-all duration-200 hover:scale-[0.98] shadow-lg ${type === 'success'
+              ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-200'
+              : 'bg-red-600 hover:bg-red-700 shadow-red-200'
+              }`}
+          >
+            Continue
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Enhanced Image Upload Component
+const ImageUpload = ({ value, onChange, className = "", multiple = false, id }) => {
+  const [uploading, setUploading] = useState(false);
+  const [preview, setPreview] = useState(multiple ? (value || []) : (value || ''));
+  const [apiService] = useState(new ApiService());
+
+  const handleFileChange = async (e) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) {
+      console.log(`No files selected for input ID: ${id}`);
+      return;
+    }
+
+    if (files.some(file => !file.type.startsWith('image/'))) {
+      console.error(`Invalid file type for input ID: ${id}`);
+      return;
+    }
+    if (files.some(file => file.size > 5 * 1024 * 1024)) {
+      console.error(`File too large for input ID: ${id}`);
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const file = files[0];
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        console.log(`Preview updated for input ID: ${id}, URL: ${e.target.result}`);
+        setPreview(multiple ? [...(Array.isArray(preview) ? preview : []), e.target.result] : e.target.result);
+      };
+      reader.readAsDataURL(file);
+
+      const imageUrl = await apiService.uploadToVercelBlob(file);
+      console.log(`Image uploaded for input ID: ${id}, URL: ${imageUrl}`);
+      onChange(multiple ? [...(Array.isArray(value) ? value : []), imageUrl] : imageUrl);
+    } catch (error) {
+      console.error(`Upload failed for input ID: ${id}:`, error);
+      setPreview(value || (multiple ? [] : ''));
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const removeImage = (indexOrUrl) => {
+    console.log(`Removing image for input ID: ${id}, index/URL: ${indexOrUrl}`);
+    if (multiple) {
+      const newImages = Array.isArray(value) ? value.filter((_, i) => i !== indexOrUrl) : [];
+      onChange(newImages);
+      setPreview(newImages);
+    } else {
+      onChange('');
+      setPreview('');
+    }
+  };
+
+  return (
+    <div className={`space-y-4 ${className}`}>
+      <div className="flex items-center gap-4">
+        <div className="relative">
+          <input
+            type="file"
+            accept="image/*"
+            multiple={multiple}
+            onChange={handleFileChange}
+            className="hidden"
+            id={id}
+            disabled={uploading}
+          />
+          <label
+            htmlFor={id}
+            className={`inline-flex items-center px-6 py-3 bg-white border-2 border-dashed border-gray-200 rounded-xl cursor-pointer hover:border-blue-300 hover:bg-blue-50 disabled:opacity-50 transition-all duration-200 ${uploading ? 'opacity-50 cursor-not-allowed' : ''}`}
+          >
+            {uploading ? (
+              <Loader2 className="w-5 h-5 mr-3 animate-spin text-blue-600" />
+            ) : (
+              <Upload className="w-5 h-5 mr-3 text-blue-600" />
+            )}
+            <span className="text-sm font-medium text-gray-700">
+              {uploading ? 'Uploading...' : `Upload Image${multiple ? 's' : ''}`}
+            </span>
+          </label>
+        </div>
+        {!multiple && (
+          <div className="flex-1">
+            <input
+              type="url"
+              value={value || ''}
+              onChange={(e) => {
+                console.log(`URL input changed for ID: ${id}, new value: ${e.target.value}`);
+                onChange(e.target.value);
+                setPreview(e.target.value);
+              }}
+              placeholder="Or paste image URL"
+              className="w-full px-4 py-3 text-sm border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+              disabled={uploading}
+            />
+          </div>
+        )}
+      </div>
+      {preview && (
+        <div className="space-y-3">
+          {multiple ? (
+            <div className="grid grid-cols-3 gap-3">
+              {(Array.isArray(preview) ? preview : []).map((img, index) => (
+                <div key={index} className="relative group">
+                  <img
+                    src={img}
+                    alt={`Preview ${index + 1}`}
+                    className="w-full h-24 object-cover rounded-xl border-2 border-gray-100 group-hover:border-gray-200 transition-colors"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removeImage(index)}
+                    className="absolute -top-2 -right-2 w-7 h-7 bg-red-500 text-white rounded-full flex items-center justify-center text-xs hover:bg-red-600 transition-all duration-200 shadow-lg"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="relative inline-block">
+              <img
+                src={preview}
+                alt="Preview"
+                className="w-32 h-32 object-cover rounded-xl border-2 border-gray-100"
+              />
+              {value && (
+                <button
+                  type="button"
+                  onClick={() => removeImage()}
+                  className="absolute -top-2 -right-2 w-7 h-7 bg-red-500 text-white rounded-full flex items-center justify-center text-xs hover:bg-red-600 transition-all duration-200 shadow-lg"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// Fixed SearchInput Component
+const SearchInput = React.memo(({ placeholder, value, onChange, onClear, className = '' }) => {
+  const inputRef = useRef(null);
+
+  const handleClear = useCallback(() => {
+    onChange('');
+    onClear?.();
+    inputRef.current?.focus();
+  }, [onChange, onClear]);
+
+  const handleChange = useCallback((e) => onChange(e.target.value), [onChange]);
+
+  return (
+    <div className="relative">
+      <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
+      <input
+        ref={inputRef}
+        type="text"
+        placeholder={placeholder}
+        value={value}
+        onChange={handleChange}
+        className={`w-full pl-12 pr-12 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all ${className}`}
+      />
+      {value && (
+        <button
+          type="button"
+          onClick={handleClear}
+          className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+        >
+          <X className="w-4 h-4" />
+        </button>
+      )}
+    </div>
+  );
+});
+
+SearchInput.displayName = 'SearchInput';
+
+
+// Dynamic Form Array Component
+const FormArrayField = ({ items, onChange, fieldConfig, title }) => {
+  const addItem = () => {
+    const newItem = fieldConfig.defaultItem();
+    console.log(`Adding new ${title.slice(0, -1)}:`, newItem);
+    onChange([...items, newItem]);
+  };
+
+  const updateItem = (index, updatedItem) => {
+    console.log(`Updating ${title.slice(0, -1)} at index ${index}:`, updatedItem);
+    const newItems = [...items];
+    newItems[index] = updatedItem;
+    onChange(newItems);
+  };
+
+  const removeItem = (index) => {
+    console.log(`Removing ${title.slice(0, -1)} at index ${index}`);
+    onChange(items.filter((_, i) => i !== index));
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex justify-between items-center">
+        <label className="block text-sm font-semibold text-gray-800">{title}</label>
+        <button
+          type="button"
+          onClick={addItem}
+          className="text-sm bg-blue-50 text-blue-700 px-4 py-2 rounded-lg hover:bg-blue-100 flex items-center gap-2 transition-all duration-200 border border-blue-200"
+        >
+          <Plus className="w-4 h-4" />
+          <span>Add {title.slice(0, -1)}</span>
+        </button>
+      </div>
+      {items.map((item, index) => (
+        <div key={index} className="border border-gray-200 rounded-xl p-5 bg-gradient-to-br from-gray-50 to-white">
+          <div className="flex justify-end mb-3">
+            <button
+              type="button"
+              onClick={() => removeItem(index)}
+              className="text-red-600 hover:text-red-800 hover:bg-red-50 p-2 rounded-lg transition-all duration-200"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {fieldConfig.fields.map((field) => (
+              <div key={field.key}>
+                <label className="block text-xs font-semibold text-gray-700 mb-2">
+                  {field.label}
+                </label>
+                {field.type === 'text' && (
+                  <input
+                    type="text"
+                    value={
+                      field.key.includes('.')
+                        ? item[field.key.split('.')[0]]?.[field.key.split('.')[1]] || ''
+                        : item[field.key] || ''
+                    }
+                    onChange={(e) => {
+                      if (field.key.includes('.')) {
+                        const [parentKey, childKey] = field.key.split('.');
+                        updateItem(index, {
+                          ...item,
+                          [parentKey]: {
+                            ...item[parentKey],
+                            [childKey]: e.target.value,
+                          },
+                        });
+                      } else {
+                        updateItem(index, { ...item, [field.key]: e.target.value });
+                      }
+                    }}
+                    className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                    placeholder={field.placeholder}
+                  />
+                )}
+                {field.type === 'number' && (
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={item[field.key] || 0}
+                    onChange={(e) => updateItem(index, { ...item, [field.key]: parseFloat(e.target.value) || 0 })}
+                    className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                    placeholder={field.placeholder}
+                  />
+                )}
+                {field.type === 'image' && (
+                  <ImageUpload
+                    value={item[field.key] || ''}
+                    onChange={(url) => updateItem(index, { ...item, [field.key]: url })}
+                    id={`addon-image-upload-${index}`}
+                  />
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+      {items.length === 0 && (
+        <div className="text-center py-12 text-gray-500 bg-gray-50 rounded-xl border-2 border-dashed border-gray-200">
+          <div className="text-4xl mb-2">📦</div>
+          <p className="text-sm">No {title.toLowerCase()} added yet.</p>
+          <p className="text-xs text-gray-400">Click "Add {title.slice(0, -1)}" to get started.</p>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const RestaurantAdminDashboard = () => {
+  const [modalType, setModalType] = useState('');
+  const [showModal, setShowModal] = useState(false);
+  const [activeTab, setActiveTab] = useState('dashboard');
+  const [loading, setLoading] = useState(false);
+  const [editingItem, setEditingItem] = useState(null);
+  const [apiService] = useState(new ApiService());
+  const [selectedLanguage, setSelectedLanguage] = useState(apiService.language);
+
+  const [banners, setBanners] = useState([]);
+  const [confirmDialog, setConfirmDialog] = useState({ isOpen: false, title: '', message: '', onConfirm: null });
+  const [notificationDialog, setNotificationDialog] = useState({ isOpen: false, title: '', message: '', type: 'success' });
+  const [dashboardStats, setDashboardStats] = useState({
+    revenue: { current: 0, growth: 0, period: 'month' },
+    orders: { current: 0, growth: 0, period: 'week' },
+    customers: { current: 0, growth: 0, period: 'month' },
+    menuItems: { current: 0, growth: 0, period: 'month' },
+    activeOffers: { current: 0, growth: 0, period: 'month' },
+  });
+  const [categories, setCategories] = useState([]);
+  const [foodItems, setFoodItems] = useState([]);
+  const [offers, setOffers] = useState([]);
+  const [orders, setOrders] = useState([]);
+  const searchParams = useSearchParams();
+
+  // Fixed search states - only for menu-items and orders
+  const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearchTerm] = useDebounce(searchTerm, 500);
+  const [isSearching, setIsSearching] = useState(false);
+
+  // Pagination states
+  const [pagination, setPagination] = useState({
+    currentPage: 1,
+    totalPages: 1,
+    totalOffers: 0,
+  });
+  const [orderPagination, setOrderPagination] = useState({
+    currentPage: 1,
+    totalPages: 1,
+    totalOrders: 0,
+  });
+  const [foodItemsPagination, setFoodItemsPagination] = useState({
+    currentPage: 1,
+    totalPages: 1,
+    totalItems: 0,
+  });
+
+  const [settings, setSettings] = useState({
+    restaurantName: 'Delicious Bites Restaurant',
+    contactPhone: '+1 (555) 123-4567',
+    address: '123 Food Street, Delicious City, DC 12345',
+    operatingHours: 'Monday - Friday: 11:00 AM - 10:00 PM\nSaturday - Sunday: 10:00 AM - 11:00 PM',
+    paymentGateway: 'stripe',
+    apiKey: '',
+    secretKey: '',
+    deliverySettings: {
+      isDeliveryEnabled: true,
+      defaultDeliveryFee: 2.99,
+      freeDeliveryThreshold: 50,
+      deliveryRadius: 10,
+      estimatedDeliveryTime: 45,
+      disabledMessage: 'Delivery service is temporarily unavailable. Please choose pickup.',
+    },
+  });
+
+  const router = useRouter();
+
+  // Search effect - only trigger for menu-items and orders
+  useEffect(() => {
+    const loadDataWithSearch = async () => {
+      if (!['menu-items', 'orders'].includes(activeTab)) {
+        return;
+      }
+
+      setIsSearching(true);
+      const params = { 
+        page: 1, 
+        search: debouncedSearchTerm || '',
+        limit: 10 
+      };
+
+      try {
+        switch (activeTab) {
+          case 'menu-items':
+            await loadFoodItems(params);
+            break;
+          case 'orders':
+            await loadOrders(params);
+            break;
+          default:
+            break;
+        }
+      } catch (error) {
+        console.error('Search error:', error);
+      } finally {
+        setIsSearching(false);
+      }
+    };
+
+    loadDataWithSearch();
+  }, [debouncedSearchTerm, activeTab]);
+
+  // Clear search when switching tabs
+  useEffect(() => {
+    setSearchTerm('');
+  }, [activeTab]);
+
+  // Load data when tab changes
+  useEffect(() => {
+    const loadDataForTab = async () => {
+      switch (activeTab) {
+        case 'dashboard':
+          await loadDashboardData();
+          break;
+        case 'menu-items':
+          await loadFoodItems({ page: 1, limit: 10, search: searchTerm });
+          break;
+        case 'orders':
+          await loadOrders({ page: 1, limit: 10, search: searchTerm });
+          break;
+        case 'categories':
+          await loadCategories();
+          break;
+        case 'banners':
+          await loadBanners();
+          break;
+        case 'offers':
+          await loadOffers({ page: 1, limit: 10 });
+          break;
+        case 'settings':
+          await loadSettings();
+          break;
+        default:
+          break;
+      }
+    };
+
+    loadDataForTab();
+  }, [activeTab]);
+
+  const loadOfferStats = async () => {
+    try {
+      const response = await apiService.getOffers();
+      setDashboardStats((prev) => ({
+        ...prev,
+        activeOffers: { current: response.totalOffers || 0, growth: 10, period: 'month' },
+      }));
+    } catch (error) {
+      console.error('Error loading offer stats:', error);
+    }
+  };
+
+  useEffect(() => {
+    loadOfferStats();
+  }, []);
+
+  const loadDashboardData = async () => {
+    try {
+      const [statsResponse, ordersResponse, categoriesResponse, itemsResponse, offersResponse] = await Promise.all([
+        apiService.getOrderStats().catch(() => ({ stats: null })),
+        apiService.getOrders({ limit: 5 }).catch(() => ({ orders: [] })),
+        apiService.getCategories().catch(() => ({ categories: [] })),
+        apiService.getFoodItems({ limit: 5 }).catch(() => ({ items: [] })),
+        apiService.getOffers({ limit: 5 }).catch(() => ({ offers: [] })),
+      ]);
+
+      setDashboardStats({
+        revenue: { current: statsResponse.stats?.totalRevenue || 0, growth: 0, period: 'month' },
+        orders: { current: statsResponse.stats?.totalOrders || 0, growth: 0, period: 'week' },
+        customers: { current: statsResponse.stats?.uniqueCustomers || 0, growth: 0, period: 'month' },
+        menuItems: { current: itemsResponse.count || 0, growth: 0, period: 'month' },
+        activeOffers: { current: offersResponse.totalOffers || 0, growth: 0, period: 'month' },
+      });
+      
+      setOrders(ordersResponse.orders || []);
+      setOffers(offersResponse.offers || []);
+    } catch (error) {
+      console.error('Dashboard data error:', error);
+    }
+  };
+
+  const getLocalized = (category, lang) => ({
+    ...category,
+    name: category.name
+      ? typeof category.name === 'object'
+        ? category.name[lang] || category.name.en || 'Unnamed'
+        : category.name
+      : 'Unnamed',
+    description: category.description
+      ? typeof category.description === 'object'
+        ? category.description[lang] || category.description.en || 'No description'
+        : category.description
+      : 'No description',
+  });
+
+const loadCategories = async (params = {}) => {
+  try {
+    const response = await apiService.getCategories(params);
+    console.log('Raw categories response:', response);
+    const categories = Array.isArray(response.categories) ? response.categories : [];
+    setCategories(categories);
+  } catch (error) {
+    console.error('Error loading categories:', error);
+    showNotificationDialog('Error', 'Error loading categories: ' + error.message, 'error');
+  }
+};
+
+const loadBanners = async (params = {}) => {
+  const response = await apiService.getBanners(params);
+  setBanners(response.data || []);
+};
+const getLocalizedFoodItem = (item, lang) => ({
+  ...item,
+  name:
+    typeof item.name === 'object' && item.name
+      ? item.name[lang] || item.name.en || item.name.fr || Object.values(item.name)[0] || 'Unnamed' // Added French fallback
+      : item.name || 'Unnamed',
+  description:
+    typeof item.description === 'object' && item.description
+      ? item.description[lang] || item.description.en || item.description.fr || Object.values(item.description)[0] || 'No description' // Added French fallback
+      : item.description || 'No description',
+  category: item.category
+    ? {
+      ...item.category,
+      name:
+        typeof item.category.name === 'object' && item.category.name
+          ? item.category.name[lang] || item.category.name.en || item.category.name.fr || Object.values(item.category.name)[0] || 'No category' // Added French fallback
+          : item.category.name || 'No category',
+    }
+    : null,
+});
+
+const loadFoodItems = async (params = {}) => {
+  setLoading(true);
+  try {
+    const queryParams = {
+      page: params.page || foodItemsPagination.currentPage,
+      limit: params.limit || 10,
+      search: params.search || '',
+      includeInactive: true,
+      lang: apiService.language,
+    };
+    
+    const response = await apiService.getFoodItems(queryParams);
+    setFoodItems(response.items || []);
+    setFoodItemsPagination({
+      currentPage: response.currentPage || 1,
+      totalPages: response.totalPages || 1,
+      totalItems: response.totalItems || 0,
+    });
+  } catch (error) {
+    console.error('Error loading food items:', error);
+    showNotificationDialog('Error', 'Error loading food items: ' + error.message, 'error');
+  } finally {
+    setLoading(false);
+  }
+};
+
+const loadOrders = async (params = {}) => {
+  setLoading(true);
+  try {
+    const queryParams = {
+      page: params.page || orderPagination.currentPage,
+      limit: params.limit || 10,
+      search: params.search || '',
+    };
+    
+    const response = await apiService.getOrders(queryParams);
+    setOrders(response.orders || []);
+    setOrderPagination({
+      currentPage: response.currentPage,
+      totalPages: response.totalPages,
+      totalOrders: response.totalOrders,
+    });
+  } catch (error) {
+    console.error('Error loading orders:', error);
+    showNotificationDialog('Error', 'Error loading orders: ' + error.message, 'error');
+  } finally {
+    setLoading(false);
+  }
+};
+
+const loadOffers = async (params = {}) => {
+  setLoading(true);
+  try {
+    const queryParams = {
+      page: params.page || 1,
+      limit: params.limit || 20,
+      search: params.search || '',
+    };
+    
+    if (params.featured !== undefined && params.featured !== null) {
+      queryParams.featured = params.featured;
+    }
+    if (params.type) {
+      queryParams.type = params.type;
+    }
+
+    const response = await apiService.getOffers(queryParams);
+    setOffers(response.offers || []);
+    setPagination({
+      currentPage: response.currentPage,
+      totalPages: response.totalPages,
+      totalOffers: response.totalOffers,
+    });
+  } catch (error) {
+    showNotificationDialog('Error', 'Error loading offers: ' + error.message, 'error');
+  } finally {
+    setLoading(false);
+  }
+};
+
+ const getSafeName = (name, language) => {
+  if (typeof name === 'string') return name;
+  if (name && typeof name === 'object') {
+    return name[language] || name.en || name.fr || Object.values(name)[0] || 'Unnamed'; // Added French fallback
+  }
+  return 'Unnamed';
+};
+  const loadSettings = async () => {
+    try {
+      const response = await apiService.getSettings();
+      const deliveryResponse = await apiService.getDeliverySettings();
+      setSettings({
+        ...settings,
+        ...response.settings,
+        deliverySettings: {
+          ...settings.deliverySettings,
+          ...deliveryResponse.deliverySettings,
+        },
+      });
+    } catch (error) {
+      console.log('Settings endpoint not available, using defaults');
+    }
+  };
+
+  const showNotificationDialog = (title, message, type = 'success') => {
+    setNotificationDialog({ isOpen: true, title, message, type });
+  };
+
+  const showConfirmDialog = (title, message, onConfirm, confirmText = "Delete") => {
+    setConfirmDialog({ isOpen: true, title, message, onConfirm, confirmText });
+  };
+
+  // Utility functions
+  const formatCurrency = useCallback((amount, currency = 'EUR') => {
+    if (isNaN(amount)) return '€0.00';
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency,
+    }).format(amount);
+  }, []);
+
+  const formatDate = useCallback((dateString) => {
+    return new Intl.DateTimeFormat('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    }).format(new Date(dateString));
+  }, []);
+
+  const getStatusColor = useCallback((status) => {
+    const colors = {
+      pending: 'bg-amber-100 text-amber-800 border-amber-200',
+      confirmed: 'bg-blue-100 text-blue-800 border-blue-200',
+      preparing: 'bg-orange-100 text-orange-800 border-orange-200',
+      ready: 'bg-emerald-100 text-emerald-800 border-emerald-200',
+      'out-for-delivery': 'bg-purple-100 text-purple-800 border-purple-200',
+      delivered: 'bg-gray-100 text-gray-800 border-gray-200',
+      cancelled: 'bg-red-100 text-red-800 border-red-200',
+    };
+    return colors[status] || 'bg-gray-100 text-gray-800 border-gray-200';
+  }, []);
+
+  const quickHighlights = useMemo(
+    () => quickHighlightsTemplate(dashboardStats, formatCurrency),
+    [dashboardStats, formatCurrency]
+  );
+
+  const opsFocus = useMemo(() => {
+    const inactiveOffers = offers.filter((offer) => !offer.isActive).length;
+    return [
+      {
+        title: 'Menu coverage',
+        metric: `${categories.length} categories`,
+        detail: `${foodItemsPagination.totalItems || foodItems.length} published items`,
+        tone: 'emerald',
+      },
+      {
+        title: 'Orders in flight',
+        metric: `${orderPagination.totalOrders || orders.length} active`,
+        detail: 'Maintain SLA under 30 min',
+        tone: 'sky',
+      },
+      {
+        title: 'Campaign hygiene',
+        metric: inactiveOffers ? `${inactiveOffers} pending` : 'All live',
+        detail: `${offers.length} total promotions`,
+        tone: inactiveOffers ? 'amber' : 'slate',
+      },
+    ];
+  }, [categories.length, foodItems.length, foodItemsPagination.totalItems, orderPagination.totalOrders, orders.length, offers]);
+
+  const statusBadges = [
+    { label: 'System online', icon: <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" /> },
+    {
+      label: orders[0]?.createdAt ? `Last order • ${formatDate(orders[0].createdAt)}` : 'Awaiting first order',
+      icon: <span className="h-2 w-2 rounded-full bg-slate-300" />,
+    },
+  ];
+
+  const headerHighlights = (
+    <>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {quickHighlights.map((highlight) => {
+          const Icon = highlightIconMap[highlight.label] || TrendingUp;
+          return (
+            <div key={highlight.label} className="rounded-2xl border border-slate-100 bg-white/80 p-5 shadow-sm">
+              <div className="flex items-center justify-between">
+                <p className="text-xs uppercase tracking-wide text-slate-400">{highlight.label}</p>
+                <span className="rounded-xl bg-slate-100 p-2 text-slate-600">
+                  <Icon className="h-4 w-4" />
+                </span>
+              </div>
+              <p className="mt-3 text-2xl font-semibold text-slate-900">{highlight.value}</p>
+              <p className="text-xs font-medium text-slate-500">{highlight.hint}</p>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-3">
+        {opsFocus.map((focus) => (
+          <div key={focus.title} className="rounded-2xl border border-slate-100 bg-white/80 p-4 text-sm text-slate-600 shadow-sm">
+            <div className="flex items-center justify-between">
+              <p className="font-semibold text-slate-900">{focus.title}</p>
+              <span
+                className={`h-2 w-2 rounded-full ${
+                  focus.tone === 'emerald'
+                    ? 'bg-emerald-400'
+                    : focus.tone === 'sky'
+                    ? 'bg-sky-400'
+                    : focus.tone === 'amber'
+                    ? 'bg-amber-400'
+                    : 'bg-slate-300'
+                }`}
+              />
+            </div>
+            <p className="mt-2 text-base font-semibold text-slate-900">{focus.metric}</p>
+            <p>{focus.detail}</p>
+          </div>
+        ))}
+      </div>
+    </>
+  );
+
+  // Render different content based on active tab
+  const renderContent = () => {
+    switch (activeTab) {
+      case 'dashboard':
+        return (
+          <div className="space-y-10">
+            <DashboardStats />
+
+            {/* Recent Orders */}
+            <div className={`${panelShellClass} p-8`}>
+              <div className="flex justify-between items-center mb-8">
+                <div>
+                  <h2 className="text-2xl font-bold text-gray-900">Recent Orders</h2>
+                  <p className="text-sm text-gray-600 mt-1">Latest customer orders</p>
+                </div>
+                <button
+                  onClick={() => setActiveTab('orders')}
+                  className="text-blue-600 hover:text-blue-800 font-semibold text-sm flex items-center gap-2 hover:bg-blue-50 px-4 py-2 rounded-xl transition-all"
+                >
+                  View All <ChevronDown className="w-4 h-4 rotate-[-90deg]" />
+                </button>
+              </div>
+              <div className="space-y-4">
+                {orders.slice(0, 5).map((order) => (
+                  <div
+                    key={order._id}
+                    className="flex items-center justify-between p-6 bg-gradient-to-r from-gray-50 to-white rounded-2xl border border-gray-100 hover:shadow-md transition-all duration-200"
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className="bg-gradient-to-br from-blue-500 to-blue-600 p-3 rounded-2xl shadow-lg">
+                        <ShoppingBag className="w-6 h-6 text-white" />
+                      </div>
+                      <div>
+                        <p className="font-bold text-gray-900">{order.orderNumber || `Order #${order._id?.slice(-6)}`}</p>
+                        <p className="text-sm text-gray-600 flex items-center gap-2 mt-1">
+                          <Users className="w-4 h-4" />
+                          {order.userId?.fullName || order.customerName}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-bold text-lg text-gray-900">{formatCurrency(order.total)}</p>
+                      <span
+                        className={`inline-flex px-3 py-1 text-xs font-semibold rounded-full border ${getStatusColor(
+                          order.status
+                        )}`}
+                      >
+                        {order.status}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Quick Actions */}
+            <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+              {[
+                {
+                  title: 'Manage Categories',
+                  description: 'Add or edit menu groupings',
+                  icon: Grid3X3,
+                  action: () => setActiveTab('categories'),
+                },
+                {
+                  title: 'Monitor Orders',
+                  description: 'Track fulfilment and SLAs',
+                  icon: ShoppingBag,
+                  action: () => setActiveTab('orders'),
+                },
+                {
+                  title: 'Banners & Offers',
+                  description: 'Refresh hero slots and promos',
+                  icon: ImageIcon,
+                  action: () => setActiveTab('banners'),
+                },
+              ].map((action, index) => (
+                <button
+                  type="button"
+                  key={action.title}
+                  onClick={action.action}
+                  className={`${panelShellClass} flex h-full flex-col items-start gap-4 rounded-3xl p-6 text-left transition hover:-translate-y-1 hover:shadow-2xl`}
+                >
+                  <div className="flex items-center justify-between w-full">
+                    <div className="rounded-2xl bg-slate-900/5 p-3 text-slate-900">
+                      <action.icon className="h-5 w-5" />
+                    </div>
+                    <ChevronDown className="h-4 w-4 rotate-[-90deg] text-slate-300" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-semibold text-slate-900">{action.title}</h3>
+                    <p className="mt-1 text-sm text-slate-500">{action.description}</p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        );
+      case 'banners':
+        return (
+          <DataGrids
+            data={banners}
+            title="Banners"
+            onEdit={(item) => openModal('banner', item)}
+            onDelete={handleDelete}
+            onAdd={() => openModal('banner')}
+            showSearch={false}
+            columns={[
+              {
+                header: 'Image',
+                key: 'imageUrl',
+                render: (item) => (
+                  <div className="relative">
+                    <img
+                      src={item.imageUrl}
+                      alt={item.title}
+                      className="w-32 h-16 object-cover rounded-2xl border-2 border-gray-100"
+                    />
+                  </div>
+                ),
+              },
+              {
+                header: 'Title',
+                key: 'title',
+                render: (item) => (
+                  <div>
+                    <p className="font-bold text-gray-900">{item.title}</p>
+                    {item.description && <p className="text-xs text-gray-500">{item.description}</p>}
+                  </div>
+                ),
+              },
+              {
+                header: 'Category',
+                key: 'category',
+                render: (item) => (
+                  <span className="bg-blue-50 text-blue-700 px-3 py-1 rounded-full text-xs font-semibold border border-blue-200">
+                    {item.category?.name || item.category || 'None'}
+                  </span>
+                ),
+              },
+              {
+                header: 'Order',
+                key: 'order',
+                render: (item) => (
+                  <span className="bg-gray-100 text-gray-800 px-3 py-1 rounded-full text-xs font-semibold">
+                    {item.order || 0}
+                  </span>
+                ),
+              },
+              {
+                header: 'Schedule',
+                key: 'schedule',
+                render: (item) => (
+                  <div className="text-sm">
+                    <p className="text-gray-900">{item.startDate ? formatDate(item.startDate) : 'No start date'}</p>
+                    <p className="text-xs text-gray-500">to {item.endDate ? formatDate(item.endDate) : 'No end date'}</p>
+                  </div>
+                ),
+              },
+              {
+                header: 'Status',
+                key: 'isActive',
+                render: (item) => (
+                  <span
+                    className={`inline-flex px-3 py-1 text-xs font-semibold rounded-full border ${
+                      item.isActive ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-red-50 text-red-700 border-red-200'
+                    }`}
+                  >
+                    {item.isActive ? 'Active' : 'Inactive'}
+                  </span>
+                ),
+              },
+            ]}
+          />
+        );
+      case 'categories':
+        return (
+          <DataGrids
+            data={categories}
+            title="Categories"
+            onEdit={(item) => openModal('category', item)}
+            onDelete={handleDelete}
+            onAdd={() => openModal('category')}
+            showSearch={false}
+            columns={[
+              {
+                header: 'Image',
+                key: 'imageUrl',
+                render: (item) => (
+                  <img
+                    src={item.imageUrl}
+                    alt={item.name || 'Unnamed'}
+                    className="w-16 h-16 object-cover rounded-xl"
+                  />
+                ),
+              },
+              {
+                header: 'Name',
+                key: 'name',
+                render: (item) => (
+                  <div>
+                    <p className="font-semibold text-gray-900">
+                      {item.name || 'Unnamed'}
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      {item.description || 'No description'}
+                    </p>
+                  </div>
+                ),
+              },
+              {
+                header: 'Icon',
+                key: 'icon',
+                render: (item) => <span className="text-2xl">{item.icon}</span>,
+              },
+              {
+                header: 'Status',
+                key: 'isActive',
+                render: (item) => (
+                  <span
+                    className={`inline-flex px-3 py-1 text-xs font-semibold rounded-full border ${item.isActive
+                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                      : 'bg-red-50 text-red-700 border-red-200'
+                      }`}
+                  >
+                    {item.isActive ? 'Active' : 'Inactive'}
+                  </span>
+                ),
+              },
+              {
+                header: 'Sort Order',
+                key: 'sortOrder',
+                render: (item) => item.sortOrder,
+              },
+            ]}
+          />
+        );
+      case 'menu-items':
+        return (
+          <MenuItemsGrid
+            onEdit={(item) => openModal('menu-item', item)}
+            onAdd={() => openModal('menu-item')}
+            onDelete={(id) => handleDelete(id, 'food-item')}
+            apiService={apiService}
+            language={selectedLanguage}
+          />
+        );
+      case 'orders':
+        return (
+          <OrdersGrid
+            onView={(order) => openModal('order-details', order)}
+            apiService={apiService}
+            language={selectedLanguage}
+          />
+        );
+      case 'offers':
+        return (
+          <DataGrids
+            data={offers}
+            title="Offers"
+            onEdit={(item) => openModal('offer', item)}
+            onDelete={handleDelete}
+            onAdd={() => openModal('offer')}
+            showSearch={false}
+            pagination={pagination}
+            columns={[
+              {
+                header: 'Title',
+                key: 'title',
+                render: (item) => (
+                  <div>
+                    <p className="font-semibold text-gray-900">{item.title}</p>
+                    <p className="text-xs text-gray-500">{item.description}</p>
+                  </div>
+                ),
+              },
+              {
+                header: 'Discount',
+                key: 'discountValue',
+                render: (item) => (
+                  <span className="bg-amber-50 text-amber-700 px-3 py-1 rounded-full text-xs font-semibold border border-amber-200">
+                    {item.discountType === 'percentage' ? `${item.discountValue}%` : formatCurrency(item.discountValue)}
+                  </span>
+                ),
+              },
+              {
+                header: 'Status',
+                key: 'isActive',
+                render: (item) => (
+                  <span
+                    className={`inline-flex px-3 py-1 text-xs font-semibold rounded-full border ${item.isActive
+                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                      : 'bg-red-50 text-red-700 border-red-200'
+                      }`}
+                  >
+                    {item.isActive ? 'Active' : 'Inactive'}
+                  </span>
+                ),
+              },
+              {
+                header: 'Valid Until',
+                key: 'validUntil',
+                render: (item) => (
+                  <div className="text-sm">
+                    <p className="text-gray-900">{item.validUntil ? formatDate(item.validUntil) : 'No expiry'}</p>
+                  </div>
+                ),
+              },
+            ]}
+          />
+        );
+      case 'settings':
+        return (
+          <SettingsForm />
+        );
+      default:
+        return <div>Content not found</div>;
+    }
+  };
+
+  const handleSidebarNavigate = (item) => {
+    if (item.href) {
+      router.push(item.href);
+      return;
+    }
+    setActiveTab(item.id);
+  };
+
+  // Modal management
+  const openModal = useCallback((type, item = null) => {
+    setModalType(type);
+    setEditingItem(item);
+    setShowModal(true);
+  }, []);
+
+  const closeModal = useCallback(() => {
+    setShowModal(false);
+    setEditingItem(null);
+    setModalType('');
+  }, []);
+
+  // CRUD operations
+  const handleSave = async (data, type) => {
+    setLoading(true);
+    try {
+      if (editingItem) {
+        switch (type) {
+          case 'category':
+            await apiService.updateCategory(editingItem._id, data);
+            break;
+          case 'menu-item':
+            await apiService.updateFoodItem(editingItem._id, data);
+            break;
+          case 'offer':
+            await apiService.updateOffer(editingItem._id, data);
+            break;
+          case 'settings':
+            await apiService.updateSettings({
+              restaurantName: data.restaurantName,
+              contactPhone: data.contactPhone,
+              address: data.address,
+              operatingHours: data.operatingHours,
+              paymentGateway: data.paymentGateway,
+              apiKey: data.apiKey,
+              secretKey: data.secretKey,
+            });
+            await apiService.updateDeliverySettings(data.deliverySettings);
+            break;
+        }
+        showNotificationDialog('Success!', `${type} updated successfully`);
+      } else {
+        switch (type) {
+          case 'category':
+            await apiService.createCategory(data);
+            break;
+          case 'menu-item':
+            await apiService.createFoodItem(data);
+            break;
+          case 'offer':
+            await apiService.createOffer(data);
+            break;
+        }
+        showNotificationDialog('Success!', `${type} created successfully`);
+      }
+      closeModal();
+      loadData();
+    } catch (error) {
+      showNotificationDialog('Error', 'Error: ' + error.message, 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDelete = async (id, type) => {
+    console.log('Deleting', type, 'with ID:', id);
+    showConfirmDialog(
+      'Confirm Deletion',
+      `Are you sure you want to delete this ${type}? This action cannot be undone.`,
+      async () => {
+        setLoading(true);
+        try {
+          switch (type) {
+            case 'category':
+              await apiService.deleteCategory(id);
+              break;
+            case 'menu item':
+              await apiService.deleteFoodItem(id);
+              break;
+            case 'food-item':
+              await apiService.deleteFoodItem(id);
+              break;
+            case 'offer':
+              await apiService.deleteOffer(id);
+              break;
+            case 'banner':
+              await apiService.deleteBanner(id);
+              break;
+          }
+          showNotificationDialog('Success!', `${type} deleted successfully`);
+          loadData();
+        } catch (error) {
+          showNotificationDialog('Error', 'Error: ' + error.message, 'error');
+        } finally {
+          setLoading(false);
+          setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: null });
+        }
+      }
+    );
+  };
+
+  const handleOrderStatusUpdate = async (orderId, newStatus) => {
+    try {
+      await apiService.updateOrderStatus(orderId, newStatus, `Status updated to ${newStatus}`);
+      showNotificationDialog('Success!', 'Order status updated successfully');
+      loadOrders();
+    } catch (error) {
+      showNotificationDialog('Error', 'Error updating order status: ' + error.message, 'error');
+    }
+  };
+
+  // Load data function
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      switch (activeTab) {
+        case 'dashboard':
+          await loadDashboardData();
+          break;
+        case 'categories':
+          await loadCategories();
+          break;
+        case 'menu-items':
+          await loadFoodItems();
+          break;
+        case 'offers':
+          await loadOffers();
+          break;
+        case 'banners':
+          await loadBanners();
+          break;
+        case 'orders':
+          await loadOrders();
+          break;
+        case 'settings':
+          await loadSettings();
+          break;
+      }
+    } catch (error) {
+      showNotificationDialog('Error', 'Error loading data: ' + error.message, 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Navigation items
+  // Enhanced Dashboard Stats Component
+  const DashboardStats = () => (
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 mb-10">
+      {[
+        {
+          title: 'Total Revenue',
+          value: formatCurrency(dashboardStats.revenue.current),
+          growth: `+${dashboardStats.revenue.growth}%`,
+          icon: Euro,
+          gradient: 'from-emerald-500 to-emerald-600',
+          bgGradient: 'from-emerald-50 to-emerald-100',
+          iconBg: 'bg-emerald-500',
+        },
+        {
+          title: 'Total Orders',
+          value: dashboardStats.orders.current.toLocaleString(),
+          growth: `+${dashboardStats.orders.growth}%`,
+          icon: ShoppingBag,
+          gradient: 'from-blue-500 to-blue-600',
+          bgGradient: 'from-blue-50 to-blue-100',
+          iconBg: 'bg-blue-500',
+        },
+        {
+          title: 'Active Customers',
+          value: dashboardStats.customers.current.toLocaleString(),
+          growth: `+${dashboardStats.customers.growth}%`,
+          icon: Users,
+          gradient: 'from-purple-500 to-purple-600',
+          bgGradient: 'from-purple-50 to-purple-100',
+          iconBg: 'bg-purple-500',
+        },
+        {
+          title: 'Menu Items',
+          value: dashboardStats.menuItems.current,
+          growth: `${categories.length} categories`,
+          icon: Package,
+          gradient: 'from-orange-500 to-orange-600',
+          bgGradient: 'from-orange-50 to-orange-100',
+          iconBg: 'bg-orange-500',
+        },
+        {
+          title: 'Active Offers',
+          value: dashboardStats.activeOffers.current,
+          growth: `+${dashboardStats.activeOffers.growth}%`,
+          icon: Percent,
+          gradient: 'from-purple-500 to-pink-600',
+          bgGradient: 'from-purple-50 to-pink-100',
+          iconBg: 'bg-purple-500',
+        },
+      ].map((stat, index) => (
+        <div
+          key={index}
+          className={`relative p-8 rounded-3xl shadow-lg border-0 bg-gradient-to-br ${stat.bgGradient} hover:shadow-xl transition-all duration-300 hover:scale-[1.02] overflow-hidden`}
+        >
+          <div className="relative flex items-start justify-between">
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-gray-600 mb-2">{stat.title}</p>
+              <p className="text-3xl font-bold text-gray-900 mb-3 leading-none">{stat.value}</p>
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1 px-2 py-1 bg-white bg-opacity-70 rounded-full">
+                  <TrendingUp className="w-3 h-3 text-emerald-600" />
+                  <span className="text-xs font-semibold text-emerald-700">{stat.growth}</span>
+                </div>
+              </div>
+            </div>
+            <div className={`${stat.iconBg} p-4 rounded-2xl shadow-lg`}>
+              <stat.icon className="w-7 h-7 text-white" />
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+
+  // Enhanced Modal Component
+  const Modal = ({ children, title, size = 'max-w-7xl' }) => {
+    if (!showModal) return null;
+
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-70 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+        <div className={`bg-white rounded-3xl ${size} w-full max-h-[90vh] overflow-hidden shadow-2xl border-0`}>
+          <div className="flex items-center justify-between p-8 border-b border-gray-100 bg-gradient-to-r from-blue-50 via-indigo-50 to-purple-50">
+            <h3 className="text-2xl font-bold text-gray-900">{title}</h3>
+            <button
+              onClick={closeModal}
+              className="p-3 hover:bg-white hover:bg-opacity-60 rounded-2xl transition-all duration-200 group"
+            >
+              <X className="w-6 h-6 text-gray-600 group-hover:text-gray-900" />
+            </button>
+          </div>
+          <div className="p-8 overflow-y-auto max-h-[calc(90vh-140px)]">
+            {children}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // Enhanced Food Item Form
+ const FoodItemForm = ({ editingItem,onClose }) => {
+    const [apiService] = useState(new ApiService());
+    const [categories, setCategories] = useState([]);
+    const [loading, setLoading] = useState(false);
+    const [notificationDialog, setNotificationDialog] = useState({
+      isOpen: false,
+      title: '',
+      message: '',
+      type: 'success',
+    });
+
+    const showNotificationDialog = (title, message, type) => {
+      setNotificationDialog({ isOpen: true, title, message, type });
+    };
+
+    const languages = [
+      { code: 'en', label: 'English' },
+      { code: 'es', label: 'Spanish' },
+      { code: 'ca', label: 'Catalan' },
+      { code: 'ar', label: 'Arabic' },
+      { code: 'fr', label: 'French' },
+    ];
+
+    const [formData, setFormData] = useState({
+      name: editingItem?._multilingual?.name || {
+        en: editingItem?.name || '',
+        es: '',
+        ca: '',
+        ar: '',
+        fr: '',
+      },
+      description: editingItem?._multilingual?.description || {
+        en: editingItem?.description || '',
+        es: '',
+        ca: '',
+        ar: '',
+        fr: '',
+      },
+      price: editingItem?.price || 0,
+      originalPrice: editingItem?.originalPrice || 0,
+      imageUrl: editingItem?.imageUrl || '',
+      images: editingItem?.images || [],
+      category: editingItem?.category?._id || '',
+      isVeg: editingItem?.isVeg || false,
+      isVegan: editingItem?.isVegan || false,
+      isGlutenFree: editingItem?.isGlutenFree || false,
+      isNutFree: editingItem?.isNutFree || false,
+      spiceLevel: editingItem?.spiceLevel || 'none',
+      isFeatured: editingItem?.isFeatured || false,
+      isPopular: editingItem?.isPopular || false,
+      isActive: editingItem?.isActive !== false,
+      isAvailable: editingItem?.isAvailable !== false,
+      preparationTime: editingItem?.preparationTime || 15,
+      stockQuantity: editingItem?.stockQuantity || 0,
+      lowStockAlert: editingItem?.lowStockAlert || 10,
+      sku: editingItem?.sku || `SKU-${Date.now()}`,
+      barcode: editingItem?.barcode || `BC-${Date.now()}`,
+      servingSize: editingItem?.servingSize || '',
+      weight: editingItem?.weight || 0,
+      tags: editingItem?.tags?.map(tag => typeof tag === 'object' ? tag.en : tag).join(', ') || '',
+      availableFrom: editingItem?.availableFrom ? new Date(editingItem.availableFrom).toISOString().slice(0, 16) : '',
+      availableUntil: editingItem?.availableUntil ? new Date(editingItem.availableUntil).toISOString().slice(0, 16) : '',
+      mealSizes: editingItem?._multilingual?.mealSizes?.map(size => ({
+        name: size.name || { en: '', es: '', ca: '', ar: '' },
+        additionalPrice: size.additionalPrice || 0,
+      })) || editingItem?.mealSizes?.map(size => ({
+        name: typeof size.name === 'object' ? size.name : { en: size.name || '', es: '', ca: '', ar: '', fr: '' },
+        additionalPrice: size.additionalPrice || 0,
+      })) || [],
+      extras: editingItem?._multilingual?.extras?.map(extra => ({
+        name: extra.name || { en: '', es: '', ca: '', ar: '', fr: '' },
+        price: extra.price || 0,
+      })) || editingItem?.extras?.map(extra => ({
+        name: typeof extra.name === 'object' ? extra.name : { en: extra.name || '', es: '', ca: '', ar: '', fr: '' },
+        price: extra.price || 0,
+      })) || [],
+      addons: editingItem?._multilingual?.addons?.map(addon => ({
+        name: addon.name || { en: '', es: '', ca: '', ar: '', fr: '' },
+        price: addon.price || 0,
+        imageUrl: addon.imageUrl || '',
+      })) || editingItem?.addons?.map(addon => ({
+        name: typeof addon.name === 'object' ? addon.name : { en: addon.name || '', es: '', ca: '', ar: '', fr: '' },
+        price: addon.price || 0,
+        imageUrl: addon.imageUrl || '',
+      })) || [],
+      ingredients: editingItem?._multilingual?.ingredients?.map(ingredient => ({
+        name: ingredient.name || { en: '', es: '', ca: '', ar: '', fr: '' },
+      })) || editingItem?.ingredients?.map(ingredient => ({
+        name: typeof ingredient.name === 'object' ? ingredient.name : { en: ingredient.name || '', es: '', ca: '', ar: '', fr: '' },
+      })) || [],
+      allergens: editingItem?.allergens || [],
+      nutrition: editingItem?.nutrition || {
+        calories: 0,
+        protein: 0,
+        carbs: 0,
+        fat: 0,
+        fiber: 0,
+        sugar: 0,
+        sodium: 0,
+      },
+      seoData: {
+        metaTitle: editingItem?._multilingual?.seoData?.metaTitle || editingItem?.seoData?._multilingual?.metaTitle || {
+          en: editingItem?.seoData?.metaTitle || '',
+          es: '',
+          ca: '',
+          ar: '',
+          fr: '',
+        },
+        metaDescription: editingItem?._multilingual?.seoData?.metaDescription || editingItem?.seoData?._multilingual?.metaDescription || {
+          en: editingItem?.seoData?.metaDescription || '',
+          es: '',
+          ca: '',
+          ar: '',
+          fr: '',
+        },
+        keywords: editingItem?.seoData?.keywords?.map(keyword => typeof keyword === 'object' ? keyword.en : keyword).join(', ') || '',
+      },
+    });
+
+    useEffect(() => {
+      const loadCategories = async () => {
+        try {
+          setLoading(true);
+          const response = await apiService.getCategories();
+          setCategories(response.categories || []);
+        } catch (error) {
+          showNotificationDialog('Error', 'Failed to load categories.', 'error');
+        } finally {
+          setLoading(false);
+        }
+      };
+      loadCategories();
+    }, [apiService]);
+
+    const handleSubmit = async (e) => {
+      e.preventDefault();
+      try {
+        if (!formData.name.en || !formData.description.en || !formData.category) {
+          showNotificationDialog('Error', 'English name, description, and category are required.', 'error');
+          return;
+        }
+
+        const payload = {
+          name: {
+            en: formData.name.en || '',
+            es: formData.name.es || '',
+            ca: formData.name.ca || '',
+            ar: formData.name.ar || '',
+            fr: formData.name.fr || ''
+          },
+          description: {
+            en: formData.description.en || '',
+            es: formData.description.es || '',
+            ca: formData.description.ca || '',
+            ar: formData.description.ar || '',
+            fr: formData.description.fr || ''
+          },
+          price: formData.price,
+          originalPrice: formData.originalPrice,
+          imageUrl: formData.imageUrl,
+          images: formData.images,
+          category: formData.category,
+          isVeg: formData.isVeg,
+          isVegan: formData.isVegan,
+          isGlutenFree: formData.isGlutenFree,
+          isNutFree: formData.isNutFree,
+          spiceLevel: formData.spiceLevel,
+          isFeatured: formData.isFeatured,
+          isPopular: formData.isPopular,
+          isActive: formData.isActive,
+          isAvailable: formData.isAvailable,
+          preparationTime: formData.preparationTime,
+          stockQuantity: formData.stockQuantity,
+          lowStockAlert: formData.lowStockAlert,
+          sku: formData.sku,
+          barcode: formData.barcode,
+          servingSize: formData.servingSize,
+          weight: formData.weight,
+          availableFrom: formData.availableFrom || null,
+          availableUntil: formData.availableUntil || null,
+          tags: formData.tags ? formData.tags.split(',').map(tag => ({
+            en: tag.trim(),
+            es: tag.trim(),
+            ca: tag.trim(),
+            ar: tag.trim(),
+            fr: tag.trim()
+          })) : [],
+          nutrition: formData.nutrition,
+          allergens: formData.allergens,
+          mealSizes: formData.mealSizes.map(size => ({
+            name: {
+              en: size.name.en || '',
+              es: size.name.es || '',
+              ca: size.name.ca || '',
+              ar: size.name.ar || '',
+              fr: size.name.fr || ''
+            },
+            additionalPrice: size.additionalPrice
+          })),
+          extras: formData.extras.map(extra => ({
+            name: {
+              en: extra.name.en || '',
+              es: extra.name.es || '',
+              ca: extra.name.ca || '',
+              ar: extra.name.ar || '',
+              fr: extra.name.fr || ''
+            },
+            price: extra.price
+          })),
+          addons: formData.addons.map(addon => ({
+            name: {
+              en: addon.name.en || '',
+              es: addon.name.es || '',
+              ca: addon.name.ca || '',
+              ar: addon.name.ar || '',
+              fr: addon.name.fr || ''
+            },
+            price: addon.price,
+            imageUrl: addon.imageUrl
+          })),
+          ingredients: formData.ingredients.map(ingredient => ({
+            name: {
+              en: ingredient.name.en || '',
+              es: ingredient.name.es || '',
+              ca: ingredient.name.ca || '',
+              ar: ingredient.name.ar || '',
+              fr: ingredient.name.fr || ''
+            }
+          })),
+          seoData: {
+            metaTitle: {
+              en: formData.seoData.metaTitle.en || '',
+              es: formData.seoData.metaTitle.es || '',
+              ca: formData.seoData.metaTitle.ca || '',
+              ar: formData.seoData.metaTitle.ar || '',
+              fr: formData.seoData.metaTitle.fr || ''
+            },
+            metaDescription: {
+              en: formData.seoData.metaDescription.en || '',
+              es: formData.seoData.metaDescription.es || '',
+              ca: formData.seoData.metaDescription.ca || '',
+              ar: formData.seoData.metaDescription.ar || '',
+              fr: formData.seoData.metaDescription.fr || ''
+            },
+            keywords: formData.seoData.keywords ? formData.seoData.keywords.split(',').map(k => ({
+              en: k.trim(),
+              es: k.trim(),
+              ca: k.trim(),
+              ar: k.trim(),
+              fr: k.trim()
+            })) : []
+          }
+        };
+
+        if (editingItem) {
+          await apiService.updateFoodItem(editingItem._id, payload);
+          showNotificationDialog('Success', 'Item updated successfully!', 'success');
+        } else {
+          await apiService.createFoodItem(payload);
+          showNotificationDialog('Success', 'Item created successfully!', 'success');
+        }
+
+        onClose();
+        loadData();
+      } catch (error) {
+        console.error('Submit error:', error);
+        showNotificationDialog('Error', error.message || 'Failed to save item. Please try again.', 'error');
+      }
+    };
+
+    const mealSizesConfig = {
+      defaultItem: () => ({
+        name: { en: '', es: '', ca: '', ar: '', fr: '' },
+        additionalPrice: 0,
+      }),
+      fields: [
+        ...languages.map(lang => ({
+          key: `name.${lang.code}`,
+          label: `Meal Size Name (${lang.label})`,
+          type: 'text',
+          placeholder: `e.g., Small, Medium, Large in ${lang.label}`,
+        })),
+        { key: 'additionalPrice', label: 'Additional Price', type: 'number', placeholder: 'e.g., 9.9' },
+      ],
+    };
+
+    const extrasConfig = {
+      defaultItem: () => ({
+        name: { en: '', es: '', ca: '', ar: '', fr: '' },
+        price: 0,
+      }),
+      fields: [
+        ...languages.map(lang => ({
+          key: `name.${lang.code}`,
+          label: `Extra Name (${lang.label})`,
+          type: 'text',
+          placeholder: `e.g., Extra Cheese, Extra Sauce in ${lang.label}`,
+        })),
+        { key: 'price', label: 'Price', type: 'number', placeholder: 'e.g., 2.5' },
+      ],
+    };
+
+    const ingredientsConfig = {
+      defaultItem: () => ({
+        name: { en: '', es: '', ca: '', ar: '', fr: '' },
+      }),
+      fields: [
+        ...languages.map(lang => ({
+          key: `name.${lang.code}`,
+          label: `Ingredient Name (${lang.label})`,
+          type: 'text',
+          placeholder: `e.g., Tomato, Cheese in ${lang.label}`,
+        })),
+      ],
+    };
+
+    const addonsConfig = {
+      defaultItem: () => ({
+        name: { en: '', es: '', ca: '', ar: '', fr: '' },
+        price: 0,
+        imageUrl: '',
+      }),
+      fields: [
+        ...languages.map(lang => ({
+          key: `name.${lang.code}`,
+          label: `Addon Name (${lang.label})`,
+          type: 'text',
+          placeholder: `e.g., Coca-Cola, French Fries in ${lang.label}`,
+        })),
+        { key: 'price', label: 'Price', type: 'number', placeholder: 'e.g., 3.0' },
+        { key: 'imageUrl', label: 'Image', type: 'image' },
+      ],
+    };
+
+    return (
+      <form onSubmit={handleSubmit} className="space-y-8">
+        {/* Basic Information */}
+        <div className="bg-gradient-to-br from-gray-50 to-white p-6 rounded-2xl border border-gray-200">
+          <h4 className="font-bold text-gray-900 mb-6 flex items-center gap-2">
+            <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+            Basic Information
+          </h4>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {languages.map(lang => (
+              <div key={lang.code}>
+                <label className="block text-sm font-semibold text-gray-800 mb-3">
+                  Item Name ({lang.label}) {lang.code === 'en' && '*'}
+                </label>
+                <input
+                  type="text"
+                  required={lang.code === 'en'}
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all bg-white"
+                  value={formData.name[lang.code] || ''}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      name: { ...formData.name, [lang.code]: e.target.value },
+                    })
+                  }
+                  placeholder={`Enter item name in ${lang.label}`}
+                />
+              </div>
+            ))}
+            <div>
+              <label className="block text-sm font-semibold text-gray-800 mb-3">Category *</label>
+              <select
+                required
+                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all bg-white"
+                value={formData.category}
+                onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+              >
+                <option value="">Select category</option>
+                {categories.map((cat) => (
+                  <option key={cat._id} value={cat._id}>
+                    {cat._multilingual?.name?.[apiService.language] || cat.name || 'Unnamed'}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+            {languages.map(lang => (
+              <div key={lang.code}>
+                <label className="block text-sm font-semibold text-gray-800 mb-3">
+                  Description ({lang.label}) {lang.code === 'en' && '*'}
+                </label>
+                <textarea
+                  rows="4"
+                  required={lang.code === 'en'}
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all resize-none bg-white"
+                  value={formData.description[lang.code] || ''}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      description: { ...formData.description, [lang.code]: e.target.value },
+                    })
+                  }
+                  placeholder={`Item description in ${lang.label}`}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Image Upload */}
+        <div className="bg-gradient-to-br from-gray-50 to-white p-6 rounded-2xl border border-gray-200">
+          <h4 className="font-bold text-gray-900 mb-6 flex items-center gap-2">
+            <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+            Images
+          </h4>
+          <ImageUpload
+            value={formData.imageUrl}
+            onChange={(url) => setFormData({ ...formData, imageUrl: url })}
+            id="primary-image-upload"
+          />
+        </div>
+
+        {/* Pricing & Stock */}
+        <div className="bg-gradient-to-br from-emerald-50 to-white p-6 rounded-2xl border border-emerald-200">
+          <h4 className="font-bold text-gray-900 mb-6 flex items-center gap-2">
+            <div className="w-2 h-2 bg-emerald-500 rounded-full"></div>
+            Pricing & Stock
+          </h4>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div>
+              <label className="block text-sm font-semibold text-gray-800 mb-3">Current Price *</label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                required
+                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all bg-white"
+                value={formData.price}
+                onChange={(e) => setFormData({ ...formData, price: parseFloat(e.target.value) || 0 })}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-gray-800 mb-3">Original Price</label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all bg-white"
+                value={formData.originalPrice}
+                onChange={(e) => setFormData({ ...formData, originalPrice: parseFloat(e.target.value) || 0 })}
+                placeholder="For showing discounts"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-gray-800 mb-3">Prep Time (min) *</label>
+              <input
+                type="number"
+                min="1"
+                required
+                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all bg-white"
+                value={formData.preparationTime}
+                onChange={(e) => setFormData({ ...formData, preparationTime: parseInt(e.target.value) || 15 })}
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mt-6">
+            <div>
+              <label className="block text-sm font-semibold text-gray-800 mb-3">Stock Quantity</label>
+              <input
+                type="number"
+                min="0"
+                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all bg-white"
+                value={formData.stockQuantity}
+                onChange={(e) => setFormData({ ...formData, stockQuantity: parseInt(e.target.value) || 0 })}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-gray-800 mb-3">Low Stock Alert</label>
+              <input
+                type="number"
+                min="0"
+                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all bg-white"
+                value={formData.lowStockAlert}
+                onChange={(e) => setFormData({ ...formData, lowStockAlert: parseInt(e.target.value) || 10 })}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-gray-800 mb-3">SKU</label>
+              <input
+                type="text"
+                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all bg-white"
+                value={formData.sku}
+                onChange={(e) => setFormData({ ...formData, sku: e.target.value })}
+                placeholder="Product SKU"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-gray-800 mb-3">Barcode</label>
+              <input
+                type="text"
+                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all bg-white"
+                value={formData.barcode}
+                onChange={(e) => setFormData({ ...formData, barcode: e.target.value })}
+                placeholder="Product barcode"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* SEO Data */}
+        <div className="bg-gradient-to-br from-gray-50 to-white p-6 rounded-2xl border border-gray-200">
+          <h4 className="font-bold text-gray-900 mb-6 flex items-center gap-2">
+            <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+            SEO Data
+          </h4>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {languages.map(lang => (
+              <div key={lang.code}>
+                <label className="block text-sm font-semibold text-gray-800 mb-3">
+                  Meta Title ({lang.label}) {lang.code === 'en' && '*'}
+                </label>
+                <input
+                  type="text"
+                  required={lang.code === 'en'}
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all bg-white"
+                  value={formData.seoData.metaTitle[lang.code] || ''}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      seoData: {
+                        ...formData.seoData,
+                        metaTitle: {
+                          ...formData.seoData.metaTitle,
+                          [lang.code]: e.target.value,
+                        },
+                      },
+                    })
+                  }
+                  placeholder={`Enter meta title in ${lang.label}`}
+                />
+              </div>
+            ))}
+          </div>
+          <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+            {languages.map(lang => (
+              <div key={lang.code}>
+                <label className="block text-sm font-semibold text-gray-800 mb-3">
+                  Meta Description ({lang.label}) {lang.code === 'en' && '*'}
+                </label>
+                <textarea
+                  rows="4"
+                  required={lang.code === 'en'}
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all resize-none bg-white"
+                  value={formData.seoData.metaDescription[lang.code] || ''}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      seoData: {
+                        ...formData.seoData,
+                        metaDescription: {
+                          ...formData.seoData.metaDescription,
+                          [lang.code]: e.target.value,
+                        },
+                      },
+                    })
+                  }
+                  placeholder={`Enter meta description in ${lang.label}`}
+                />
+              </div>
+            ))}
+          </div>
+          <div className="mt-6">
+            <label className="block text-sm font-semibold text-gray-800 mb-3">Keywords</label>
+            <input
+              type="text"
+              className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all bg-white"
+              value={formData.seoData.keywords || ''}
+              onChange={(e) =>
+                setFormData({
+                  ...formData,
+                  seoData: {
+                    ...formData.seoData,
+                    keywords: e.target.value,
+                  },
+                })
+              }
+              placeholder="Enter keywords (comma-separated)"
+            />
+          </div>
+        </div>
+
+        {/* Food Properties & Status */}
+        <div className="bg-gradient-to-br from-purple-50 to-white p-6 rounded-2xl border border-purple-200">
+          <h4 className="font-bold text-gray-900 mb-6 flex items-center gap-2">
+            <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
+            Food Properties & Status
+          </h4>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mb-6">
+            {[
+              { key: 'isVeg', label: 'Vegetarian', desc: 'Contains no meat' },
+              { key: 'isVegan', label: 'Vegan', desc: 'Plant-based only' },
+              { key: 'isGlutenFree', label: 'Gluten Free', desc: 'No gluten ingredients' },
+              { key: 'isNutFree', label: 'Nut Free', desc: 'Safe from nuts' },
+              { key: 'isFeatured', label: 'Featured Item', desc: 'Show on homepage' },
+              { key: 'isPopular', label: 'Popular', desc: 'Mark as popular choice' },
+              { key: 'isActive', label: 'Active', desc: 'Available for ordering' },
+              { key: 'isAvailable', label: 'Available', desc: 'Currently in stock' },
+            ].map(({ key, label, desc }) => (
+              <div key={key} className="bg-white p-4 rounded-xl border border-gray-200">
+                <div className="flex items-center gap-3 mb-2">
+                  <input
+                    type="checkbox"
+                    id={key}
+                    checked={formData[key]}
+                    onChange={(e) => setFormData({ ...formData, [key]: e.target.checked })}
+                    className="w-5 h-5 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                  />
+                  <label htmlFor={key} className="text-sm font-semibold text-gray-800">
+                    {label}
+                  </label>
+                </div>
+                <p className="text-xs text-gray-500 ml-8">{desc}</p>
+              </div>
+            ))}
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold text-gray-800 mb-3">Spice Level</label>
+            <select
+              className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all bg-white"
+              value={formData.spiceLevel}
+              onChange={(e) => setFormData({ ...formData, spiceLevel: e.target.value })}
+            >
+              <option value="none">None</option>
+              <option value="mild">Mild 🌶️</option>
+              <option value="medium">Medium 🌶️🌶️</option>
+              <option value="hot">Hot 🌶️🌶️🌶️</option>
+              <option value="very-hot">Very Hot 🌶️🌶️🌶️🌶️</option>
+            </select>
+          </div>
+        </div>
+
+
+
+
+        {/* Availability Schedule */}
+        <div className="bg-gradient-to-br from-cyan-50 to-white p-6 rounded-2xl border border-cyan-200">x
+          <h4 className="font-bold text-gray-900 mb-6 flex items-center gap-2">
+            <div className="w-2 h-2 bg-cyan-500 rounded-full"></div>
+            Availability Schedule
+          </h4>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <label className="block text-sm font-semibold text-gray-800 mb-3">Available From</label>
+              <input
+                type="datetime-local"
+                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition-all bg-white"
+                value={formData.availableFrom}
+                onChange={(e) => setFormData({ ...formData, availableFrom: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-gray-800 mb-3">Available Until</label>
+              <input
+                type="datetime-local"
+                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition-all bg-white"
+                value={formData.availableUntil}
+                onChange={(e) => setFormData({ ...formData, availableUntil: e.target.value })}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Array Fields */}
+        <FormArrayField
+          items={formData.mealSizes}
+          onChange={(mealSizes) => setFormData({ ...formData, mealSizes })}
+          fieldConfig={mealSizesConfig}
+          title="Meal Sizes"
+        />
+        <FormArrayField
+          items={formData.extras}
+          onChange={(extras) => setFormData({ ...formData, extras })}
+          fieldConfig={extrasConfig}
+          title="Extras"
+        />
+        <FormArrayField
+          items={formData.ingredients}
+          onChange={(ingredients) => setFormData({ ...formData, ingredients })}
+          fieldConfig={ingredientsConfig}
+          title="Ingredients"
+        />
+        <FormArrayField
+          items={formData.addons}
+          onChange={(addons) => setFormData({ ...formData, addons })}
+          fieldConfig={addonsConfig}
+          title="Addons"
+        />
+
+        {/* Form Actions */}
+        <div className="flex justify-end gap-4">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-6 py-3 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            className="px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700"
+          >
+            Save
+          </button>
+        </div>
+
+        <NotificationDialog
+          isOpen={notificationDialog.isOpen}
+          onClose={() => setNotificationDialog({ isOpen: false, title: '', message: '', type: 'success' })}
+          title={notificationDialog.title}
+          message={notificationDialog.message}
+          type={notificationDialog.type}
+        />
+      </form>
+    );
+  };
+
+  // Enhanced Category Form Component
+  const CategoryForm = () => {
+    const [formData, setFormData] = useState({
+    name: editingItem?._multilingual?.name || { en: '', es: '', ca: '', ar: '', fr: '' }, // Added French
+    description: editingItem?._multilingual?.description || { en: '', es: '', ca: '', ar: '', fr: '' }, // Added French
+      imageUrl: editingItem?.imageUrl || '',
+      icon: editingItem?.icon || '',
+      isActive: editingItem?.isActive !== false,
+      sortOrder: editingItem?.sortOrder || 0,
+    });
+
+     const languages = [
+    { code: 'en', label: 'English' },
+    { code: 'es', label: 'Spanish' },
+    { code: 'ca', label: 'Catalan' },
+    { code: 'ar', label: 'Arabic' },
+    { code: 'fr', label: 'French' }, // Added French
+  ];
+
+    const handleSubmit = (e) => {
+      e.preventDefault();
+      handleSave(formData, 'category');
+    };
+
+    return (
+      <form onSubmit={handleSubmit} className="space-y-8">
+        <div className="bg-gradient-to-br from-gray-50 to-white p-6 rounded-2xl border border-gray-200">
+          <h4 className="font-bold text-gray-900 mb-6 flex items-center gap-2">
+            <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+            Category Information
+          </h4>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {languages.map(lang => (
+              <div key={lang.code}>
+                <label className="block text-sm font-semibold text-gray-800 mb-3">
+                  Category Name ({lang.label}) {lang.code === 'en' && '*'}
+                </label>
+                <input
+                  type="text"
+                  required={lang.code === 'en'}
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all bg-white"
+                  value={formData.name[lang.code] || ''}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      name: { ...formData.name, [lang.code]: e.target.value },
+                    })
+                  }
+                  placeholder={`Enter category name in ${lang.label}`}
+                />
+              </div>
+            ))}
+            {languages.map(lang => (
+              <div key={lang.code}>
+                <label className="block text-sm font-semibold text-gray-800 mb-3">
+                  Description ({lang.label}) {lang.code === 'en' && '*'}
+                </label>
+                <textarea
+                  rows="4"
+                  required={lang.code === 'en'}
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all resize-none bg-white"
+                  value={formData.description[lang.code] || ''}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      description: { ...formData.description, [lang.code]: e.target.value },
+                    })
+                  }
+                  placeholder={`Category description in ${lang.label}`}
+                />
+              </div>
+            ))}
+          </div>
+          <div className="mt-6">
+            <label className="block text-sm font-semibold text-gray-800 mb-3">Category Image *</label>
+            <ImageUpload
+              value={formData.imageUrl}
+              onChange={(url) => {
+                console.log(`Updating category imageUrl: ${url}`);
+                setFormData({ ...formData, imageUrl: url });
+              }}
+              id="category-image-upload"
+            />
+          </div>
+          <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <label className="block text-sm font-semibold text-gray-800 mb-3">Icon</label>
+              <input
+                type="text"
+                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all bg-white"
+                value={formData.icon}
+                onChange={(e) => setFormData({ ...formData, icon: e.target.value })}
+                placeholder="e.g., 🍔"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-gray-800 mb-3">Sort Order</label>
+              <input
+                type="number"
+                min="0"
+                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all bg-white"
+                value={formData.sortOrder}
+                onChange={(e) => setFormData({ ...formData, sortOrder: parseInt(e.target.value) || 0 })}
+              />
+            </div>
+          </div>
+          <div className="mt-6">
+            <label className="block text-sm font-semibold text-gray-800 mb-3">Status</label>
+            <select
+              className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all bg-white"
+              value={formData.isActive}
+              onChange={(e) => setFormData({ ...formData, isActive: e.target.value === 'true' })}
+            >
+              <option value={true}>Active</option>
+              <option value={false}>Inactive</option>
+            </select>
+          </div>
+        </div>
+        <div className="flex justify-end">
+          <button
+            type="submit"
+            disabled={loading}
+            className="px-8 py-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-2xl hover:from-blue-700 hover:to-indigo-700 disabled:opacity-50 flex items-center gap-3 font-semibold transition-all duration-200 hover:scale-[0.98] shadow-lg shadow-blue-200"
+          >
+            {loading && <Loader2 className="w-5 h-5 animate-spin" />}
+            <Save className="w-5 h-5" />
+            <span>{editingItem ? 'Update' : 'Create'} Category</span>
+          </button>
+        </div>
+      </form>
+    );
+  };
+
+  const BannerForm = () => {
+    const [formData, setFormData] = useState({
+      title: editingItem?.title || '',
+      description: editingItem?.description || '',
+      imageUrl: editingItem?.imageUrl || '',
+      category: editingItem?.category || '',
+      isActive: editingItem?.isActive !== false,
+      order: editingItem?.order || 0,
+      link: editingItem?.link || '',
+      startDate: editingItem?.startDate ? new Date(editingItem.startDate).toISOString().slice(0, 16) : '',
+      endDate: editingItem?.endDate ? new Date(editingItem.endDate).toISOString().slice(0, 16) : '',
+    });
+
+    const handleSubmit = async (e) => {
+      e.preventDefault();
+      setLoading(true);
+      try {
+        const submitData = {
+          ...formData,
+          order: parseInt(formData.order) || 0,
+          startDate: formData.startDate ? new Date(formData.startDate).toISOString() : null,
+          endDate: formData.endDate ? formData.endDate ? new Date(formData.endDate).toISOString() : null : null,
+        };
+
+        if (editingItem) {
+          await apiService.updateBanner(editingItem._id, submitData);
+          showNotificationDialog('Success!', 'Banner updated successfully');
+        } else {
+          await apiService.createBanner(submitData);
+          showNotificationDialog('Success!', 'Banner created successfully');
+        }
+        closeModal();
+        loadData();
+      } catch (error) {
+        showNotificationDialog('Error', 'Error: ' + error.message, 'error');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    return (
+      <form onSubmit={handleSubmit} className="space-y-8">
+        {/* Banner Details */}
+        <div className="bg-gradient-to-br from-rose-50 to-white p-6 rounded-2xl border border-rose-200">
+          <h4 className="font-bold text-gray-900 mb-6 flex items-center gap-2">
+            <div className="w-2 h-2 bg-rose-500 rounded-full"></div>
+            Banner Details
+          </h4>
+          <div className="space-y-6">
+            <div>
+              <label className="block text-sm font-semibold text-gray-800 mb-3">Banner Title *</label>
+              <input
+                type="text"
+                required
+                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-rose-500 focus:border-rose-500 transition-all bg-white"
+                value={formData.title}
+                onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                placeholder="Enter banner title"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-gray-800 mb-3">Description</label>
+              <textarea
+                rows="4"
+                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-rose-500 focus:border-rose-500 transition-all resize-none bg-white"
+                value={formData.description}
+                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                placeholder="Banner description"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-gray-800 mb-3">Banner Image *</label>
+              <ImageUpload
+                value={formData.imageUrl}
+                onChange={(url) => setFormData({ ...formData, imageUrl: url })}
+                id={`banner-upload`}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-gray-800 mb-3">Category</label>
+              <select
+                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-rose-500 focus:border-rose-500 transition-all bg-white"
+                value={formData.category}
+                onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+              >
+                <option value="">Select Category</option>
+                {['promotional', 'seasonal', 'featured', 'general'].map((opt) => (
+                  <option key={opt} value={opt}>
+                    {opt.charAt(0).toUpperCase() + opt.slice(1)}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-gray-800 mb-3">Link URL</label>
+              <input
+                type="url"
+                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-rose-500 focus:border-rose-500 transition-all bg-white"
+                value={formData.link}
+                onChange={(e) => setFormData({ ...formData, link: e.target.value })}
+                placeholder="https://example.com"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Schedule & Status */}
+        <div className="bg-gradient-to-br from-pink-50 to-white p-6 rounded-2xl border border-pink-200">
+          <h4 className="font-bold text-gray-900 mb-6 flex items-center gap-2">
+            <div className="w-2 h-2 bg-pink-500 rounded-full"></div>
+            Schedule & Status
+          </h4>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <label className="block text-sm font-semibold text-gray-800 mb-3">Start Date</label>
+              <input
+                type="datetime-local"
+                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-pink-500 focus:border-pink-500 transition-all bg-white"
+                value={formData.startDate}
+                onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-gray-800 mb-3">End Date</label>
+              <input
+                type="datetime-local"
+                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-pink-500 focus:border-pink-500 transition-all bg-white"
+                value={formData.endDate}
+                onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-gray-800 mb-3">Display Order</label>
+              <input
+                type="number"
+                min="0"
+                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-pink-500 focus:border-pink-500 transition-all bg-white"
+                value={formData.order}
+                onChange={(e) => setFormData({ ...formData, order: e.target.value })}
+              />
+            </div>
+            <div className="bg-white p-4 rounded-xl border border-gray-200">
+              <div className="flex items-center gap-3">
+                <input
+                  type="checkbox"
+                  id="isActive"
+                  checked={formData.isActive}
+                  onChange={(e) => setFormData({ ...formData, isActive: e.target.checked })}
+                  className="w-5 h-5 rounded border-gray-300 text-pink-600 focus:ring-pink-500"
+                />
+                <label htmlFor="isActive" className="text-sm font-semibold text-gray-800">
+                  Active Banner
+                </label>
+              </div>
+              <p className="text-xs text-gray-500 ml-8 mt-1">Make this banner visible to customers</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-4">
+          <button
+            type="button"
+            onClick={closeModal}
+            className="px-8 py-4 text-gray-700 bg-gray-100 rounded-2xl hover:bg-gray-200 font-semibold transition-all duration-200 hover:scale-[0.98]"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={loading}
+            className="px-8 py-4 bg-gradient-to-r from-rose-600 to-pink-600 text-white rounded-2xl hover:from-rose-700 hover:to-pink-700 disabled:opacity-50 flex items-center gap-3 font-semibold transition-all duration-200 hover:scale-[0.98] shadow-lg shadow-rose-200"
+          >
+            {loading && <Loader2 className="w-5 h-5 animate-spin" />}
+            <span>{editingItem ? 'Update' : 'Create'} Banner</span>
+          </button>
+        </div>
+      </form>
+    );
+  };
+
+  const OrderDetails = ({ order }) => {
+    return (
+      <div className="space-y-8">
+        <div className="bg-gradient-to-br from-gray-50 to-white p-6 rounded-2xl border border-gray-200">
+          <h4 className="font-bold text-gray-900 mb-6 flex items-center gap-2">
+            <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+            Order #{order.orderNumber || order._id?.slice(-6)}
+          </h4>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div>
+              <label className="block text-sm font-semibold text-gray-800 mb-2">Customer</label>
+              <p className="text-gray-900">{order.userId?.fullName || order.customerName || 'Unknown'}</p>
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-gray-800 mb-2">Delivery Type</label>
+              <p className="text-gray-900">{order.deliveryType}</p>
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-gray-800 mb-2">Address</label>
+              {order.deliveryType === 'delivery' ? (
+                <p className="font-semibold text-gray-900">{order.deliveryAddress.address},<br />{order.deliveryAddress.apartment}</p>
+              ) : (
+                <p className="text-gray-900">Pickup</p>
+              )}
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-gray-800 mb-2">Total</label>
+              <p className="text-gray-900">{formatCurrency(order.total)}</p>
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-gray-800 mb-2">Status</label>
+              <p
+                className={`inline-flex px-3 py-1 text-xs font-semibold rounded-full border ${getStatusColor(order.status)}`}
+              >
+                {order.status}
+              </p>
+            </div>
+            <div className="md:col-span-2">
+              <label className="block text-sm font-semibold text-gray-800 mb-2">Order Items</label>
+              <div className="space-y-2">
+                {order.items?.map((item, index) => (
+                  <div
+                    key={index}
+                    className="flex justify-between items-center p-4 bg-gray-50 rounded-xl border border-gray-100"
+                  >
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">
+                        {typeof item.foodItem?.name === 'object' && item.foodItem?.name
+                          ? item.foodItem.name[apiService.language] || item.foodItem.name.en || Object.values(item.foodItem.name)[0] || 'Unknown Item'
+                          : item.foodItem?.name || 'Unknown Item'}
+                      </p>
+                      <p className="text-xs text-gray-500">Quantity: {item.quantity}</p>
+                      {item.specialInstructions && (
+                        <p className="text-xs text-gray-500">Special Instruction: {item.specialInstructions}</p>
+                      )}
+                    </div>
+                    <p className="text-sm font-medium text-gray-900">
+                      {formatCurrency(item.totalPrice)}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-gray-800 mb-2">Created At</label>
+              <p className="text-gray-900">{formatDate(order.createdAt)}</p>
+            </div>
+          </div>
+        </div>
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={closeModal}
+            className="px-8 py-4 text-gray-700 bg-gray-100 rounded-2xl hover:bg-gray-200 font-semibold transition-all duration-200 hover:scale-[0.98]"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  const SettingsForm = () => {
+    const [formData, setFormData] = useState(settings);
+    const [toggling, setToggling] = useState(false);
+
+    const handleSubmit = (e) => {
+      e.preventDefault();
+      handleSave(formData, 'settings');
+      setSettings(formData);
+    };
+
+    const handleToggleDelivery = async (enabled) => {
+      setToggling(true);
+      try {
+        const response = await apiService.toggleDeliveryStatus(enabled, formData.deliverySettings.disabledMessage);
+        setFormData({
+          ...formData,
+          deliverySettings: {
+            ...formData.deliverySettings,
+            ...response.deliverySettings,
+          },
+        });
+        showNotificationDialog(
+          'Success!',
+          enabled ? 'Delivery service enabled' : 'Delivery service disabled',
+          'success'
+        );
+      } catch (error) {
+        showNotificationDialog('Error', 'Failed to update delivery status: ' + error.message, 'error');
+      } finally {
+        setToggling(false);
+      }
+    };
+
+    return (
+      <form onSubmit={handleSubmit} className="space-y-8">
+        <div className={`${panelShellClass} p-6 space-y-6`}>
+          <div>
+            <p className={sectionHeadingClass}>Restaurant information</p>
+            <h4 className="mt-1 text-xl font-semibold text-slate-900">Brand identity</h4>
+            <p className="text-sm text-slate-500">Keep guest-facing details polished and up to date.</p>
+          </div>
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+            <div>
+              <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Restaurant name</label>
+              <input
+                type="text"
+                className={`${inputBaseClass} mt-2`}
+                value={formData.restaurantName}
+                onChange={(e) => setFormData({ ...formData, restaurantName: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Contact phone</label>
+              <input
+                type="tel"
+                className={`${inputBaseClass} mt-2`}
+                value={formData.contactPhone}
+                onChange={(e) => setFormData({ ...formData, contactPhone: e.target.value })}
+              />
+            </div>
+          </div>
+          <div>
+            <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Address</label>
+            <input
+              type="text"
+              className={`${inputBaseClass} mt-2`}
+              value={formData.address}
+              onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+            />
+          </div>
+          <div>
+            <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Operating hours</label>
+            <textarea
+              rows="4"
+              className={`${inputBaseClass} mt-2 resize-none`}
+              value={formData.operatingHours}
+              onChange={(e) => setFormData({ ...formData, operatingHours: e.target.value })}
+            />
+          </div>
+        </div>
+
+        <div className={`${panelShellClass} p-6 space-y-6`}>
+          <div>
+            <p className={sectionHeadingClass}>Payments</p>
+            <h4 className="mt-1 text-xl font-semibold text-slate-900">Payment gateway</h4>
+            <p className="text-sm text-slate-500">Credentials are encrypted and never shared with staff.</p>
+          </div>
+          <div>
+            <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Gateway</label>
+            <select
+              className={`${inputBaseClass} mt-2`}
+              value={formData.paymentGateway}
+              onChange={(e) => setFormData({ ...formData, paymentGateway: e.target.value })}
+            >
+              <option value="stripe">Stripe</option>
+              <option value="paypal">PayPal</option>
+              <option value="square">Square</option>
+            </select>
+          </div>
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+            <div>
+              <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">API key</label>
+              <input
+                type="password"
+                className={`${inputBaseClass} mt-2 font-mono`}
+                value={formData.apiKey}
+                onChange={(e) => setFormData({ ...formData, apiKey: e.target.value })}
+                placeholder="sk_live_..."
+              />
+            </div>
+            <div>
+              <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Secret key</label>
+              <input
+                type="password"
+                className={`${inputBaseClass} mt-2 font-mono`}
+                value={formData.secretKey}
+                onChange={(e) => setFormData({ ...formData, secretKey: e.target.value })}
+                placeholder="••••••••"
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className={`${panelShellClass} p-6 space-y-6`}>
+          <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className={sectionHeadingClass}>Logistics</p>
+              <h4 className="text-xl font-semibold text-slate-900">Delivery settings</h4>
+              <p className="text-sm text-slate-500">Control coverage, SLAs and customer messaging.</p>
+            </div>
+            <div className="flex items-center gap-3">
+              <span
+                className={`text-sm font-semibold ${
+                  formData.deliverySettings.isDeliveryEnabled ? 'text-emerald-600' : 'text-slate-500'
+                }`}
+              >
+                {formData.deliverySettings.isDeliveryEnabled ? 'Delivery enabled' : 'Delivery disabled'}
+              </span>
+              <button
+                type="button"
+                onClick={() => handleToggleDelivery(!formData.deliverySettings.isDeliveryEnabled)}
+                disabled={toggling}
+                className={`${secondaryButtonClass} px-4 py-2`}
+              >
+                {toggling ? 'Updating...' : formData.deliverySettings.isDeliveryEnabled ? 'Disable' : 'Enable'}
+              </button>
+            </div>
+          </div>
+          {!formData.deliverySettings.isDeliveryEnabled && (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50/80 p-4 text-sm text-amber-900">
+              <p>Customers currently see only pickup options until delivery is re-enabled.</p>
+            </div>
+          )}
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+            <div>
+              <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Default delivery fee (€)</label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                className={`${inputBaseClass} mt-2`}
+                value={formData.deliverySettings.defaultDeliveryFee}
+                onChange={(e) =>
+                  setFormData({
+                    ...formData,
+                    deliverySettings: {
+                      ...formData.deliverySettings,
+                      defaultDeliveryFee: parseFloat(e.target.value) || 0,
+                    },
+                  })
+                }
+                disabled={!formData.deliverySettings.isDeliveryEnabled}
+              />
+            </div>
+            <div>
+              <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Free delivery threshold (€)</label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                className={`${inputBaseClass} mt-2`}
+                value={formData.deliverySettings.freeDeliveryThreshold}
+                onChange={(e) =>
+                  setFormData({
+                    ...formData,
+                    deliverySettings: {
+                      ...formData.deliverySettings,
+                      freeDeliveryThreshold: parseFloat(e.target.value) || 0,
+                    },
+                  })
+                }
+                disabled={!formData.deliverySettings.isDeliveryEnabled}
+              />
+              <p className="mt-1 text-xs text-slate-500">Orders above this value are delivered for free.</p>
+            </div>
+            <div>
+              <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Delivery radius (km)</label>
+              <input
+                type="number"
+                step="1"
+                min="1"
+                className={`${inputBaseClass} mt-2`}
+                value={formData.deliverySettings.deliveryRadius}
+                onChange={(e) =>
+                  setFormData({
+                    ...formData,
+                    deliverySettings: {
+                      ...formData.deliverySettings,
+                      deliveryRadius: parseInt(e.target.value) || 1,
+                    },
+                  })
+                }
+                disabled={!formData.deliverySettings.isDeliveryEnabled}
+              />
+            </div>
+            <div>
+              <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Estimated delivery time (min)</label>
+              <input
+                type="number"
+                step="5"
+                min="10"
+                className={`${inputBaseClass} mt-2`}
+                value={formData.deliverySettings.estimatedDeliveryTime}
+                onChange={(e) =>
+                  setFormData({
+                    ...formData,
+                    deliverySettings: {
+                      ...formData.deliverySettings,
+                      estimatedDeliveryTime: parseInt(e.target.value) || 10,
+                    },
+                  })
+                }
+                disabled={!formData.deliverySettings.isDeliveryEnabled}
+              />
+            </div>
+          </div>
+          <div>
+            <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Disabled message
+              <span className="ml-1 text-[10px] font-normal lowercase tracking-normal text-slate-400">
+                shown to guests when delivery is offline
+              </span>
+            </label>
+            <textarea
+              rows={3}
+              maxLength={200}
+              className={`${inputBaseClass} mt-2`}
+              value={formData.deliverySettings.disabledMessage}
+              onChange={(e) =>
+                setFormData({
+                  ...formData,
+                  deliverySettings: {
+                    ...formData.deliverySettings,
+                    disabledMessage: e.target.value,
+                  },
+                })
+              }
+              placeholder="Delivery is temporarily unavailable. Please select pickup."
+            />
+            <p className="mt-1 text-xs text-slate-400">
+              {formData.deliverySettings.disabledMessage.length}/200 characters
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-end gap-3">
+          <button type="button" className={ghostButtonClass} onClick={loadSettings} disabled={loading}>
+            Reset
+          </button>
+          <button type="submit" disabled={loading} className={primaryButtonClass}>
+            {loading && <Loader2 className="h-4 w-4 animate-spin" />}
+            <Save className="h-4 w-4" />
+            <span>Save settings</span>
+          </button>
+        </div>
+      </form>
+    );
+  };
+
+  // Enhanced Data Grids Component with Fixed Search
+  const DataGrids = ({ data, columns, onEdit, onDelete, onAdd, title, actions, pagination, showSearch = false }) => {
+    const handleClearSearch = () => {
+      setSearchTerm('');
+      // Reload data without search
+      switch (activeTab) {
+        case 'menu-items':
+          loadFoodItems({ search: '' });
+          break;
+        case 'orders':
+          loadOrders({ search: '' });
+          break;
+      }
+    };
+
+    return (
+      <div className={`${panelShellClass} overflow-hidden`}>
+        <div className="border-b border-slate-100 bg-white/80 px-6 py-6">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <p className={sectionHeadingClass}>{title}</p>
+              <p className="text-sm text-slate-500">Manage {title.toLowerCase()} with clear audit trails.</p>
+            </div>
+            {onAdd && (
+              <button onClick={onAdd} className={primaryButtonClass}>
+                <Plus className="h-4 w-4" />
+                Add {title.endsWith('s') ? title.slice(0, -1) : title}
+              </button>
+            )}
+          </div>
+          {showSearch && (
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              <div className="relative flex-1 min-w-[240px]">
+                <SearchInput placeholder={`Search ${title.toLowerCase()}...`} value={searchTerm} onChange={setSearchTerm} />
+                {isSearching && (
+                  <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-slate-400" />
+                )}
+              </div>
+              {searchTerm && (
+                <button className={secondaryButtonClass} onClick={handleClearSearch} type="button">
+                  <RefreshCw className="h-4 w-4" />
+                  Reset
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="min-w-full text-left">
+            <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500">
+              <tr>
+                {columns.map((col, index) => (
+                  <th key={index} className="px-6 py-3">
+                    {col.header}
+                  </th>
+                ))}
+                <th className="px-6 py-3 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 bg-white text-sm text-slate-900">
+              {data.map((item, index) => (
+                <tr key={item._id || item.id || index} className="hover:bg-slate-50/70">
+                  {columns.map((col, colIndex) => (
+                    <td key={colIndex} className="px-6 py-4 align-top">
+                      {col.render ? col.render(item) : item[col.key]}
+                    </td>
+                  ))}
+                  <td className="px-6 py-4">
+                    <div className="flex items-center justify-end gap-1">
+                      {actions?.map((action, actionIndex) => {
+                        const baseActionClass =
+                          'p-2 rounded-xl transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-200';
+                        const actionStyle = action.className || 'text-slate-500 hover:text-slate-900 hover:bg-slate-100';
+                        return (
+                          <button
+                            key={`${action.label}-${actionIndex}`}
+                            onClick={() => action.onClick(item)}
+                            className={[baseActionClass, actionStyle].join(' ')}
+                            title={action.label}
+                          >
+                            <action.icon className="h-4 w-4" />
+                          </button>
+                        );
+                      })}
+                      <button
+                        onClick={() => onEdit(item)}
+                        className="p-2 rounded-xl text-blue-600 transition hover:bg-blue-50 hover:text-blue-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-100"
+                        title="Edit"
+                      >
+                        <Edit3 className="h-4 w-4" />
+                      </button>
+                      {onDelete && (
+                        <button
+                          onClick={() => onDelete(item._id || item.id, title.toLowerCase().slice(0, -1))}
+                          className="p-2 rounded-xl text-red-600 transition hover:bg-red-50 hover:text-red-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-100"
+                          title="Delete"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {data.length === 0 && (
+            <div className="px-6 py-10 text-center text-sm text-slate-500">
+              <p className="font-semibold text-slate-700">No {title.toLowerCase()} found</p>
+              <p>{searchTerm ? 'Try refining your search terms.' : 'Create the first record to get started.'}</p>
+            </div>
+          )}
+        </div>
+
+        {pagination && pagination.totalPages > 1 && (
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 px-6 py-4 text-sm text-slate-500">
+            <p>
+              Showing {data.length} of {pagination.totalOffers || pagination.totalItems || pagination.totalOrders || 0}{' '}
+              {title.toLowerCase()}
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                disabled={pagination.currentPage === 1}
+                onClick={() => {
+                  setPagination((prev) => ({ ...prev, currentPage: Math.max(1, (prev?.currentPage || 1) - 1) }));
+                  switch (activeTab) {
+                    case 'menu-items':
+                      loadFoodItems({ page: pagination.currentPage - 1 });
+                      break;
+                    case 'orders':
+                      loadOrders({ page: pagination.currentPage - 1 });
+                      break;
+                    case 'offers':
+                      loadOffers({ page: pagination.currentPage - 1 });
+                      break;
+                  }
+                }}
+                className={secondaryButtonClass}
+              >
+                Previous
+              </button>
+              <span className="text-slate-600">
+                Page {pagination.currentPage} of {pagination.totalPages}
+              </span>
+              <button
+                type="button"
+                disabled={pagination.currentPage === pagination.totalPages}
+                onClick={() => {
+                  setPagination((prev) => ({ ...prev, currentPage: Math.min(pagination.totalPages, (prev?.currentPage || 1) + 1) }));
+                  switch (activeTab) {
+                    case 'menu-items':
+                      loadFoodItems({ page: pagination.currentPage + 1 });
+                      break;
+                    case 'orders':
+                      loadOrders({ page: pagination.currentPage + 1 });
+                      break;
+                    case 'offers':
+                      loadOffers({ page: pagination.currentPage + 1 });
+                      break;
+                  }
+                }}
+                className={secondaryButtonClass}
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const mainContent = loading ? (
+    <div className="glass-panel flex min-h-[320px] items-center justify-center border border-white/70 bg-white/90 p-8 shadow-xl">
+      <div className="text-center">
+        <Loader2 className="mx-auto mb-4 h-12 w-12 animate-spin text-blue-600" />
+        <p className="text-sm font-medium text-slate-500">Loading the latest operational data...</p>
+      </div>
+    </div>
+  ) : (
+    renderContent()
+  );
+
+  // Get modal content based on type
+  const getModalContent = () => {
+    const modalConfigs = {
+      category: { title: `${editingItem ? 'Edit' : 'Add'} Category`, component: <CategoryForm />, size: 'max-w-4xl' },
+       'menu-item': { 
+      title: `${editingItem ? 'Edit' : 'Add'} Menu Item`, 
+      component: <FoodItemForm editingItem={editingItem} onClose={closeModal} />, // ✅ Add editingItem
+      size: 'max-w-6xl'  },
+      banner: { title: `${editingItem ? 'Edit' : 'Add'} Banner Item`, component: <BannerForm />, size: 'max-w-6xl' },
+      'order-details': { title: 'Order Details', component: <OrderDetails order={editingItem} />, size: 'max-w-5xl' },
+    };
+    const config = modalConfigs[modalType];
+    return config ? { title: config.title, component: config.component, size: config.size } : null;
+  };
+
+  const modalContent = getModalContent();
+
+  const handleLanguageChange = (lang) => {
+    setSelectedLanguage(lang);
+    apiService.setLanguage(lang);
+    loadData();
+    loadCategories();
+    loadFoodItems();
+  };
+
+  return (
+    <>
+      <AdminShell
+        title="Saborly Admin"
+        subtitle="Keep markets, menus and fulfilment aligned from a single, executive workspace."
+        statusBadges={statusBadges}
+        showSearch
+        searchValue={searchTerm}
+        onSearchChange={setSearchTerm}
+        languageValue={selectedLanguage}
+        languageOptions={languages}
+        onLanguageChange={handleLanguageChange}
+        sidebarItems={adminNavigation}
+        activeSidebarItem={activeTab}
+        onSidebarNavigate={handleSidebarNavigate}
+        headerChildren={headerHighlights}
+      >
+        {mainContent}
+      </AdminShell>
+      {modalContent && (
+        <Modal title={modalContent.title} size={modalContent.size}>
+          {modalContent.component}
+        </Modal>
+      )}
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        onClose={() => setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: null })}
+        onConfirm={confirmDialog.onConfirm}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        confirmText={confirmDialog.confirmText}
+      />
+      <NotificationDialog
+        isOpen={notificationDialog.isOpen}
+        onClose={() => setNotificationDialog({ isOpen: false, title: '', message: '', type: 'success' })}
+        title={notificationDialog.title}
+        message={notificationDialog.message}
+        type={notificationDialog.type}
+      />
+    </>
+  );
+};
+
+export default RestaurantAdminDashboard; 

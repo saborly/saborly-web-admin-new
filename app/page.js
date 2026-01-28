@@ -1,6 +1,8 @@
 'use client';
 import React, { useState, useEffect, createContext, useContext } from 'react';
-import { Eye, EyeOff, Lock, Mail, AlertCircle, Shield } from 'lucide-react';
+import { Eye, EyeOff, Shield, Lock, Mail, AlertCircle, CheckCircle, Users, Settings, BarChart3, LogOut } from 'lucide-react';
+import RestaurantAdminDashboard from './component/dashoard';
+import Dashoard from './admin/page';
 
 // Auth Context
 export const AuthContext = createContext();
@@ -62,7 +64,7 @@ const AuthProvider = ({ children }) => {
       } else if (data.success && data.user.role !== 'admin') {
         return { 
           success: false, 
-          message: 'Access denied. Admin privileges required.' 
+          message: 'Access denied. Super Admin privileges required.' 
         };
       } else {
         return { 
@@ -74,7 +76,7 @@ const AuthProvider = ({ children }) => {
       console.error('Login error:', error);
       return { 
         success: false, 
-        message: error.message || 'Network error. Please try again.' 
+        message: error.message || 'Network error. Please check your connection and try again.' 
       };
     }
   };
@@ -113,8 +115,8 @@ export const useAuth = () => {
   return context;
 };
 
-// Simple Login Component
-const SimpleLoginPage = () => {
+// Login Component with new executive visual design
+const LoginPage = () => {
   const { login } = useAuth();
   const [formData, setFormData] = useState({
     email: '',
@@ -122,7 +124,8 @@ const SimpleLoginPage = () => {
   });
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [errors, setErrors] = useState({});
+  const [message, setMessage] = useState({ type: '', text: '' });
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -131,160 +134,212 @@ const SimpleLoginPage = () => {
       [name]: value
     }));
     
-    // Clear error when user starts typing
-    if (error) setError('');
+    // Clear field-specific error when user starts typing
+    if (errors[name]) {
+      setErrors(prev => ({
+        ...prev,
+        [name]: ''
+      }));
+    }
+    
+    // Clear general message
+    if (message.text) {
+      setMessage({ type: '', text: '' });
+    }
+  };
+
+  const validateForm = () => {
+    const newErrors = {};
+    
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!formData.email.trim()) {
+      newErrors.email = 'Email is required';
+    } else if (!emailRegex.test(formData.email.trim())) {
+      newErrors.email = 'Please provide a valid email address';
+    }
+    
+    if (!formData.password) {
+      newErrors.password = 'Password is required';
+    } else if (formData.password.length < 6) {
+      newErrors.password = 'Password must be at least 6 characters';
+    }
+    
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setMessage({ type: '', text: '' });
     
-    // Basic validation
-    if (!formData.email || !formData.password) {
-      setError('Please fill in all fields');
-      return;
-    }
-
+    if (!validateForm()) return;
+    
     setIsLoading(true);
-    setError('');
     
     try {
       const result = await login(formData.email, formData.password);
       
       if (!result.success) {
-        setError(result.message);
+        setMessage({
+          type: 'error',
+          text: result.message
+        });
       }
     } catch (error) {
-      setError('An unexpected error occurred. Please try again.');
+      setMessage({
+        type: 'error',
+        text: 'An unexpected error occurred. Please try again.'
+      });
     } finally {
       setIsLoading(false);
     }
   };
 
-
-
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
-      <div className="sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="flex justify-center">
-          <div className="bg-blue-600 p-3 rounded-full">
-            <Shield className="h-10 w-10 text-white" />
-          </div>
-        </div>
-        <h2 className="mt-6 text-center text-3xl font-bold text-gray-900">
-          Admin Login
-        </h2>
-        <p className="mt-2 text-center text-sm text-gray-600">
-          Sign in to access the admin dashboard
-        </p>
+    <div className="relative min-h-screen overflow-hidden bg-slate-950 text-white">
+      <div className="absolute inset-0">
+        <div className="absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-slate-900 via-slate-900/80 to-transparent" />
+        <div className="backdrop-grid" />
+        <div className="absolute left-1/3 top-1/4 h-72 w-72 -translate-x-1/2 rounded-full bg-fuchsia-500/30 blur-[150px]" />
+        <div className="absolute right-0 bottom-10 h-60 w-60 rounded-full bg-orange-500/20 blur-[180px]" />
       </div>
 
-      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10">
-          {error && (
-            <div className="mb-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded flex items-center gap-2">
-              <AlertCircle className="h-5 w-5 flex-shrink-0" />
-              <span className="text-sm">{error}</span>
+      <div className="relative z-10 mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 py-10 lg:grid lg:grid-cols-[1.1fr,0.9fr] lg:items-stretch lg:px-10">
+        <section className="glass-panel bg-white p-8 text-black shadow-2xl">
+          <div className="flex h-full flex-col justify-between">
+            <div>
+              <p className="text-xs uppercase tracking-[0.4em] text-slate-900">Saborly Admin</p>
+              <h1 className="mt-6 text-4xl font-semibold leading-tight text-black">Command center for culinary operations</h1>
+              <p className="mt-4 text-base text-slate-700">
+                Monitor performance, update menus and resolve orders with a polished control room built for decisive teams.
+              </p>
+              <ul className="mt-8 space-y-4 text-sm text-slate-800">
+                <li className="flex items-center gap-3">
+                  <CheckCircle className="h-5 w-5 text-emerald-600" />
+                  Enterprise-grade security with MFA-ready workflows
+                </li>
+                <li className="flex items-center gap-3">
+                  <CheckCircle className="h-5 w-5 text-emerald-600" />
+                  Real-time visibility into orders, inventory and offers
+                </li>
+                <li className="flex items-center gap-3">
+                  <CheckCircle className="h-5 w-5 text-emerald-600" />
+                  Designed for distributed teams with localized operations
+                </li>
+              </ul>
+            </div>
+
+          </div>
+        </section>
+
+        <section className="glass-panel bg-white p-8 text-slate-900 shadow-2xl">
+          <div className="text-center">
+            <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-fuchsia-500 to-orange-500 text-white shadow-lg">
+              <Shield className="h-7 w-7" />
+            </div>
+            <h2 className="text-3xl font-semibold">Secure Admin Sign-In</h2>
+            <p className="mt-3 text-sm text-slate-500">Use your corporate Saborly credentials to continue.</p>
+          </div>
+
+          {message.text && (
+            <div
+              className={`mt-6 flex items-start gap-3 rounded-2xl border px-4 py-3 text-sm ${
+                message.type === 'error'
+                  ? 'border-red-200 bg-red-50 text-red-700'
+                  : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+              }`}
+            >
+              <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+              <span>{message.text}</span>
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700">
-                Email Address
-              </label>
-              <div className="mt-1 relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <Mail className="h-5 w-5 text-gray-400" />
-                </div>
+          <form onSubmit={handleSubmit} className="mt-8 space-y-6">
+            <div className="space-y-2">
+              <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Email address</label>
+              <div className="relative">
+                <Mail className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-300" />
                 <input
-                  id="email"
-                  name="email"
                   type="email"
-                  autoComplete="email"
-                  required
+                  name="email"
                   value={formData.email}
                   onChange={handleInputChange}
-                  className="appearance-none block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="admin@example.com"
+                  placeholder="admin@saorely.com"
+                  autoComplete="email"
                   disabled={isLoading}
+                  className={`w-full rounded-2xl border px-5 py-4 pl-12 text-sm font-medium text-slate-900 transition focus:outline-none focus:ring-2 focus:ring-slate-900/60 ${
+                    errors.email ? 'border-red-300 ring-red-200' : 'border-slate-200 bg-slate-50'
+                  }`}
                 />
               </div>
+              {errors.email && (
+                <p className="flex items-center gap-2 text-xs font-medium text-red-600">
+                  <AlertCircle className="h-4 w-4" />
+                  {errors.email}
+                </p>
+              )}
             </div>
 
-            <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700">
-                Password
-              </label>
-              <div className="mt-1 relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <Lock className="h-5 w-5 text-gray-400" />
-                </div>
+            <div className="space-y-2">
+              <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Password</label>
+              <div className="relative">
+                <Lock className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-300" />
                 <input
-                  id="password"
-                  name="password"
                   type={showPassword ? 'text' : 'password'}
-                  autoComplete="current-password"
-                  required
+                  name="password"
                   value={formData.password}
                   onChange={handleInputChange}
-                  className="appearance-none block w-full pl-10 pr-10 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                   placeholder="••••••••"
+                  autoComplete="current-password"
                   disabled={isLoading}
+                  className={`w-full rounded-2xl border px-5 py-4 pl-12 pr-14 text-sm font-medium text-slate-900 transition focus:outline-none focus:ring-2 focus:ring-slate-900/60 ${
+                    errors.password ? 'border-red-300 ring-red-200' : 'border-slate-200 bg-slate-50'
+                  }`}
                 />
                 <button
                   type="button"
-                  className="absolute inset-y-0 right-0 pr-3 flex items-center"
                   onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 transition hover:text-slate-700"
                   disabled={isLoading}
                 >
-                  {showPassword ? (
-                    <EyeOff className="h-5 w-5 text-gray-400 hover:text-gray-600" />
-                  ) : (
-                    <Eye className="h-5 w-5 text-gray-400 hover:text-gray-600" />
-                  )}
+                  {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                 </button>
               </div>
+              {errors.password && (
+                <p className="flex items-center gap-2 text-xs font-medium text-red-600">
+                  <AlertCircle className="h-4 w-4" />
+                  {errors.password}
+                </p>
+              )}
             </div>
 
-            <div>
-              <button
-                type="submit"
-                disabled={isLoading}
-                className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isLoading ? (
-                  <div className="flex items-center gap-2">
-                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                    Signing in...
-                  </div>
-                ) : (
-                  'Sign in'
-                )}
-              </button>
-            </div>
+            <button
+              type="submit"
+              disabled={isLoading || !formData.email || !formData.password}
+              className="w-full rounded-2xl bg-slate-900 py-4 text-sm font-semibold uppercase tracking-wide text-white transition hover:bg-slate-800 focus:outline-none focus:ring-4 focus:ring-slate-900/30 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {isLoading ? (
+                <div className="flex items-center justify-center gap-3">
+                  <div className="h-5 w-5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                  Authenticating...
+                </div>
+              ) : (
+                <div className="flex items-center justify-center gap-2">
+                  <Shield className="h-4 w-4" />
+                  Enter dashboard
+                </div>
+              )}
+            </button>
           </form>
 
-      
-
-          <div className="mt-6">
-            <div className="relative">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-gray-300" />
-              </div>
-              <div className="relative flex justify-center text-sm">
-                <span className="px-2 bg-white text-gray-500">
-                  Saborly Admin Panel
-                </span>
-              </div>
-            </div>
+          <div className="mt-8 space-y-3 text-center text-xs text-slate-500">
+            <p className="flex items-center justify-center gap-2">
+              <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-400" />
+              Infrastructure status: Operational
+            </p>
+            <p>Having trouble accessing your account? Contact the platform owner.</p>
           </div>
-        </div>
-      </div>
-
-      <div className="mt-8 text-center">
-        <p className="text-sm text-gray-500">
-          &copy; {new Date().getFullYear()} Saborly. Admin access only.
-        </p>
+        </section>
       </div>
     </div>
   );
@@ -292,10 +347,11 @@ const SimpleLoginPage = () => {
 
 // Loading Component
 const LoadingSpinner = () => (
-  <div className="min-h-screen flex items-center justify-center bg-gray-100">
-    <div className="text-center">
-      <div className="w-12 h-12 border-4 border-gray-300 border-t-blue-600 rounded-full animate-spin mx-auto mb-4"></div>
-      <p className="text-gray-600">Loading...</p>
+  <div className="flex min-h-screen items-center justify-center bg-slate-100 text-black">
+    <div className="glass-panel bg-white p-10 text-center">
+      <div className="mx-auto mb-6 h-14 w-14 animate-spin rounded-full border-4 border-slate-200 border-t-slate-900" />
+      <h3 className="text-lg font-semibold text-black">Preparing Saborly Admin</h3>
+      <p className="mt-2 text-sm text-slate-700">Initializing encrypted session...</p>
     </div>
   </div>
 );
@@ -309,35 +365,26 @@ const ProtectedRoute = ({ children }) => {
   }
 
   if (!isAuthenticated) {
-    return <SimpleLoginPage />;
+    return <LoginPage />;
   }
 
-  // Additional check to ensure user is admin
+  // Additional check to ensure user is superadmin
   if (user?.role !== 'admin') {
-    return <SimpleLoginPage />;
+    return <LoginPage />;
   }
 
   return children;
 };
 
 // Main App Component
-const AdminLoginApp = ({ DashboardComponent }) => {
+const SuperAdminApp = () => {
   return (
     <AuthProvider>
       <ProtectedRoute>
-        {DashboardComponent}
+<Dashoard/>
       </ProtectedRoute>
     </AuthProvider>
   );
 };
 
-export default AdminLoginApp;
-
-// Example usage in your app:
-// In your main admin page:
-// import AdminLoginApp from './AdminLoginApp';
-// import Dashboard from './Dashboard';
-
-// export default function AdminPage() {
-//   return <AdminLoginApp DashboardComponent={<Dashboard />} />;
-// }
+export default SuperAdminApp;

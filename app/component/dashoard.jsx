@@ -3436,7 +3436,7 @@ const FoodItemForm = ({ editingItem, onClose }) => {
     <>
       <AdminShell
         title="Saborly Admin"
-        subtitle="Keep markets, menus and fulfilment aligned from a single, executive workspace."
+        subtitle=""
         statusBadges={statusBadges}
         showSearch
         searchValue={searchTerm}

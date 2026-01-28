@@ -207,27 +207,7 @@ const LoginPage = () => {
       <div className="relative z-10 mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 py-10 lg:grid lg:grid-cols-[1.1fr,0.9fr] lg:items-stretch lg:px-10">
         <section className="glass-panel bg-white p-8 text-black shadow-2xl">
           <div className="flex h-full flex-col justify-between">
-            <div>
-              <p className="text-xs uppercase tracking-[0.4em] text-slate-900">Saborly Admin</p>
-              <h1 className="mt-6 text-4xl font-semibold leading-tight text-black">Command center for culinary operations</h1>
-              <p className="mt-4 text-base text-slate-700">
-                Monitor performance, update menus and resolve orders with a polished control room built for decisive teams.
-              </p>
-              <ul className="mt-8 space-y-4 text-sm text-slate-800">
-                <li className="flex items-center gap-3">
-                  <CheckCircle className="h-5 w-5 text-emerald-600" />
-                  Enterprise-grade security with MFA-ready workflows
-                </li>
-                <li className="flex items-center gap-3">
-                  <CheckCircle className="h-5 w-5 text-emerald-600" />
-                  Real-time visibility into orders, inventory and offers
-                </li>
-                <li className="flex items-center gap-3">
-                  <CheckCircle className="h-5 w-5 text-emerald-600" />
-                  Designed for distributed teams with localized operations
-                </li>
-              </ul>
-            </div>
+           
 
           </div>
         </section>

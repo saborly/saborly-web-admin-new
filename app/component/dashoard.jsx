@@ -1787,6 +1787,9 @@ const loadOffers = async (params = {}) => {
 // Enhanced Food Item Form - FIXED VERSION
 // Replace the FoodItemForm component in your code with this version
 
+// FIXED FoodItemForm - SEO Data Validation
+// This version includes proper validation for required SEO fields
+
 const FoodItemForm = ({ editingItem, onClose }) => {
   const [apiService] = useState(new ApiService());
   const [categories, setCategories] = useState([]);
@@ -1810,11 +1813,10 @@ const FoodItemForm = ({ editingItem, onClose }) => {
     { code: 'fr', label: 'French' },
   ];
 
-  // ✅ FIX: Helper function to safely extract multilingual data
+  // ✅ Helper function to safely extract multilingual data
   const getMultilingualValue = (multilingualData, fallbackData, defaultValue = {}) => {
     // If it's already a proper object with language keys, return it
     if (multilingualData && typeof multilingualData === 'object' && !Array.isArray(multilingualData)) {
-      // Check if it has language keys
       if (multilingualData.en || multilingualData.es || multilingualData.ca || multilingualData.ar || multilingualData.fr) {
         return multilingualData;
       }
@@ -1848,7 +1850,7 @@ const FoodItemForm = ({ editingItem, onClose }) => {
     };
   };
 
-  // ✅ FIX: Helper function to safely extract array items
+  // ✅ Helper function to safely extract array items
   const getMultilingualArray = (multilingualArray, fallbackArray = []) => {
     if (!multilingualArray && !fallbackArray) {
       return [];
@@ -1939,25 +1941,47 @@ const FoodItemForm = ({ editingItem, onClose }) => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      if (!formData.name.en || !formData.description.en || !formData.category) {
-        showNotificationDialog('Error', 'English name, description, and category are required.', 'error');
+      // ✅ VALIDATION: Check all required fields
+      if (!formData.name.en?.trim()) {
+        showNotificationDialog('Error', 'English item name is required.', 'error');
+        return;
+      }
+
+      if (!formData.description.en?.trim()) {
+        showNotificationDialog('Error', 'English description is required.', 'error');
+        return;
+      }
+
+      if (!formData.category) {
+        showNotificationDialog('Error', 'Category is required.', 'error');
+        return;
+      }
+
+      // ✅ NEW: Validate SEO data - metaTitle and metaDescription MUST have English values
+      if (!formData.seoData.metaTitle.en?.trim()) {
+        showNotificationDialog('Error', 'SEO Meta Title (English) is required.', 'error');
+        return;
+      }
+
+      if (!formData.seoData.metaDescription.en?.trim()) {
+        showNotificationDialog('Error', 'SEO Meta Description (English) is required.', 'error');
         return;
       }
 
       const payload = {
         name: {
-          en: formData.name.en || '',
-          es: formData.name.es || '',
-          ca: formData.name.ca || '',
-          ar: formData.name.ar || '',
-          fr: formData.name.fr || ''
+          en: formData.name.en?.trim() || '',
+          es: formData.name.es?.trim() || '',
+          ca: formData.name.ca?.trim() || '',
+          ar: formData.name.ar?.trim() || '',
+          fr: formData.name.fr?.trim() || ''
         },
         description: {
-          en: formData.description.en || '',
-          es: formData.description.es || '',
-          ca: formData.description.ca || '',
-          ar: formData.description.ar || '',
-          fr: formData.description.fr || ''
+          en: formData.description.en?.trim() || '',
+          es: formData.description.es?.trim() || '',
+          ca: formData.description.ca?.trim() || '',
+          ar: formData.description.ar?.trim() || '',
+          fr: formData.description.fr?.trim() || ''
         },
         price: formData.price,
         originalPrice: formData.originalPrice,
@@ -1993,58 +2017,59 @@ const FoodItemForm = ({ editingItem, onClose }) => {
         allergens: formData.allergens,
         mealSizes: formData.mealSizes.map(size => ({
           name: {
-            en: size.name.en || '',
-            es: size.name.es || '',
-            ca: size.name.ca || '',
-            ar: size.name.ar || '',
-            fr: size.name.fr || ''
+            en: size.name.en?.trim() || '',
+            es: size.name.es?.trim() || '',
+            ca: size.name.ca?.trim() || '',
+            ar: size.name.ar?.trim() || '',
+            fr: size.name.fr?.trim() || ''
           },
           additionalPrice: size.additionalPrice
         })),
         extras: formData.extras.map(extra => ({
           name: {
-            en: extra.name.en || '',
-            es: extra.name.es || '',
-            ca: extra.name.ca || '',
-            ar: extra.name.ar || '',
-            fr: extra.name.fr || ''
+            en: extra.name.en?.trim() || '',
+            es: extra.name.es?.trim() || '',
+            ca: extra.name.ca?.trim() || '',
+            ar: extra.name.ar?.trim() || '',
+            fr: extra.name.fr?.trim() || ''
           },
           price: extra.price
         })),
         addons: formData.addons.map(addon => ({
           name: {
-            en: addon.name.en || '',
-            es: addon.name.es || '',
-            ca: addon.name.ca || '',
-            ar: addon.name.ar || '',
-            fr: addon.name.fr || ''
+            en: addon.name.en?.trim() || '',
+            es: addon.name.es?.trim() || '',
+            ca: addon.name.ca?.trim() || '',
+            ar: addon.name.ar?.trim() || '',
+            fr: addon.name.fr?.trim() || ''
           },
           price: addon.price,
           imageUrl: addon.imageUrl
         })),
         ingredients: formData.ingredients.map(ingredient => ({
           name: {
-            en: ingredient.name.en || '',
-            es: ingredient.name.es || '',
-            ca: ingredient.name.ca || '',
-            ar: ingredient.name.ar || '',
-            fr: ingredient.name.fr || ''
+            en: ingredient.name.en?.trim() || '',
+            es: ingredient.name.es?.trim() || '',
+            ca: ingredient.name.ca?.trim() || '',
+            ar: ingredient.name.ar?.trim() || '',
+            fr: ingredient.name.fr?.trim() || ''
           }
         })),
+        // ✅ FIXED: Ensure SEO data has English values with .trim()
         seoData: {
           metaTitle: {
-            en: formData.seoData.metaTitle.en || '',
-            es: formData.seoData.metaTitle.es || '',
-            ca: formData.seoData.metaTitle.ca || '',
-            ar: formData.seoData.metaTitle.ar || '',
-            fr: formData.seoData.metaTitle.fr || ''
+            en: formData.seoData.metaTitle.en?.trim() || '',
+            es: formData.seoData.metaTitle.es?.trim() || '',
+            ca: formData.seoData.metaTitle.ca?.trim() || '',
+            ar: formData.seoData.metaTitle.ar?.trim() || '',
+            fr: formData.seoData.metaTitle.fr?.trim() || ''
           },
           metaDescription: {
-            en: formData.seoData.metaDescription.en || '',
-            es: formData.seoData.metaDescription.es || '',
-            ca: formData.seoData.metaDescription.ca || '',
-            ar: formData.seoData.metaDescription.ar || '',
-            fr: formData.seoData.metaDescription.fr || ''
+            en: formData.seoData.metaDescription.en?.trim() || '',
+            es: formData.seoData.metaDescription.es?.trim() || '',
+            ca: formData.seoData.metaDescription.ca?.trim() || '',
+            ar: formData.seoData.metaDescription.ar?.trim() || '',
+            fr: formData.seoData.metaDescription.fr?.trim() || ''
           },
           keywords: formData.seoData.keywords ? formData.seoData.keywords.split(',').map(k => ({
             en: k.trim(),
@@ -2308,7 +2333,6 @@ const FoodItemForm = ({ editingItem, onClose }) => {
         </div>
       </div>
 
-      {/* Additional sections remain the same... */}
       {/* Food Properties & Status */}
       <div className="bg-gradient-to-br from-purple-50 to-white p-6 rounded-2xl border border-purple-200">
         <h4 className="font-bold text-gray-900 mb-6 flex items-center gap-2">
@@ -2415,18 +2439,100 @@ const FoodItemForm = ({ editingItem, onClose }) => {
         title="Addons"
       />
 
+      {/* ✅ FIXED SEO Data Section - Now with validation */}
+      <div className="bg-gradient-to-br from-gray-50 to-white p-6 rounded-2xl border border-gray-200">
+        <h4 className="font-bold text-gray-900 mb-6 flex items-center gap-2">
+          <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+          SEO Data
+        </h4>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {languages.map(lang => (
+            <div key={lang.code}>
+              <label className="block text-sm font-semibold text-gray-800 mb-3">
+                Meta Title ({lang.label}) {lang.code === 'en' && '*'}
+              </label>
+              <input
+                type="text"
+                required={lang.code === 'en'}
+                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all bg-white"
+                value={formData.seoData.metaTitle[lang.code] || ''}
+                onChange={(e) =>
+                  setFormData({
+                    ...formData,
+                    seoData: {
+                      ...formData.seoData,
+                      metaTitle: {
+                        ...formData.seoData.metaTitle,
+                        [lang.code]: e.target.value,
+                      },
+                    },
+                  })
+                }
+                placeholder={`Enter meta title in ${lang.label}`}
+              />
+            </div>
+          ))}
+        </div>
+        <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+          {languages.map(lang => (
+            <div key={lang.code}>
+              <label className="block text-sm font-semibold text-gray-800 mb-3">
+                Meta Description ({lang.label}) {lang.code === 'en' && '*'}
+              </label>
+              <textarea
+                rows="4"
+                required={lang.code === 'en'}
+                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all resize-none bg-white"
+                value={formData.seoData.metaDescription[lang.code] || ''}
+                onChange={(e) =>
+                  setFormData({
+                    ...formData,
+                    seoData: {
+                      ...formData.seoData,
+                      metaDescription: {
+                        ...formData.seoData.metaDescription,
+                        [lang.code]: e.target.value,
+                      },
+                    },
+                  })
+                }
+                placeholder={`Enter meta description in ${lang.label}`}
+              />
+            </div>
+          ))}
+        </div>
+        <div className="mt-6">
+          <label className="block text-sm font-semibold text-gray-800 mb-3">Keywords</label>
+          <input
+            type="text"
+            className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all bg-white"
+            value={formData.seoData.keywords || ''}
+            onChange={(e) =>
+              setFormData({
+                ...formData,
+                seoData: {
+                  ...formData.seoData,
+                  keywords: e.target.value,
+                },
+              })
+            }
+            placeholder="Enter keywords (comma-separated)"
+          />
+        </div>
+      </div>
+
       {/* Form Actions */}
       <div className="flex justify-end gap-4">
         <button
           type="button"
           onClick={onClose}
-          className="px-6 py-3 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200"
+          className="px-6 py-3 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 font-semibold"
         >
           Cancel
         </button>
         <button
           type="submit"
-          className="px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700"
+          className="px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 font-semibold"
         >
           Save
         </button>
@@ -2442,7 +2548,6 @@ const FoodItemForm = ({ editingItem, onClose }) => {
     </form>
   );
 };
-
   // Enhanced Category Form Component
   const CategoryForm = () => {
     const [formData, setFormData] = useState({

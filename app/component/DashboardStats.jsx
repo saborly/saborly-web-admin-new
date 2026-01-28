@@ -2,44 +2,34 @@
 import React from 'react';
 import { Euro, ShoppingBag, Users, Package, Percent, TrendingUp, ChevronDown, UserPlus, Smartphone } from 'lucide-react';
 
-const DashboardStats = ({ stats, orders }) => {
+const DashboardStats = ({ stats = {}, orders = [] }) => {
+  // Ensure stats has default values
+  const safeStats = {
+    revenue: { current: 0, growth: 0 },
+    orders: { current: 0, growth: 0 },
+    customers: { current: 0, growth: 0 },
+    menuItems: { current: 0, growth: 0 },
+    activeOffers: { current: 0, growth: 0 },
+    totalUsers: 0,
+    userGrowth: 0,
+    ...stats
+  };
+
   const formatCurrency = (amount) => {
-    if (isNaN(amount)) return '€0.00';
+    const num = Number(amount);
+    if (isNaN(num)) return '€0.00';
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: 'EUR',
-    }).format(amount);
+    }).format(num);
   };
 
-  const formatDate = (dateString) => {
-    return new Intl.DateTimeFormat('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    }).format(new Date(dateString));
-  };
-
-  const getStatusColor = (status) => {
-    const colors = {
-      pending: 'bg-amber-100 text-amber-800 border-amber-200',
-      confirmed: 'bg-blue-100 text-blue-800 border-blue-200',
-      preparing: 'bg-orange-100 text-orange-800 border-orange-200',
-      ready: 'bg-emerald-100 text-emerald-800 border-emerald-200',
-      'out-for-delivery': 'bg-purple-100 text-purple-800 border-purple-200',
-      delivered: 'bg-gray-100 text-gray-800 border-gray-200',
-      cancelled: 'bg-red-100 text-red-800 border-red-200',
-    };
-    return colors[status] || 'bg-gray-100 text-gray-800 border-gray-200';
-  };
-
-  // Updated statCards array with Total Users
+  // Updated statCards array with safe values
   const statCards = [
     {
       title: 'Total Revenue',
-      value: formatCurrency(stats.revenue.current),
-      growth: `+${stats.revenue.growth}%`,
+      value: formatCurrency(safeStats.revenue.current),
+      growth: `+${safeStats.revenue.growth || 0}%`,
       icon: Euro,
       gradient: 'from-emerald-500 to-emerald-600',
       bgGradient: 'from-emerald-50 to-emerald-100',
@@ -47,8 +37,8 @@ const DashboardStats = ({ stats, orders }) => {
     },
     {
       title: 'Total Orders',
-      value: stats.orders.current.toLocaleString(),
-      growth: `+${stats.orders.growth}%`,
+      value: safeStats.orders.current?.toLocaleString() || '0',
+      growth: `+${safeStats.orders.growth || 0}%`,
       icon: ShoppingBag,
       gradient: 'from-blue-500 to-blue-600',
       bgGradient: 'from-blue-50 to-blue-100',
@@ -56,8 +46,8 @@ const DashboardStats = ({ stats, orders }) => {
     },
     {
       title: 'Total Users',
-      value: stats.totalUsers?.toLocaleString() || '0',
-      growth: `+${stats.userGrowth || 0}%`,
+      value: safeStats.totalUsers?.toLocaleString() || '0',
+      growth: `+${safeStats.userGrowth || 0}%`,
       icon: Users,
       gradient: 'from-purple-500 to-purple-600',
       bgGradient: 'from-purple-50 to-purple-100',
@@ -66,8 +56,8 @@ const DashboardStats = ({ stats, orders }) => {
     },
     {
       title: 'Active Customers',
-      value: stats.customers.current.toLocaleString(),
-      growth: `+${stats.customers.growth}%`,
+      value: safeStats.customers.current?.toLocaleString() || '0',
+      growth: `+${safeStats.customers.growth || 0}%`,
       icon: UserPlus,
       gradient: 'from-indigo-500 to-indigo-600',
       bgGradient: 'from-indigo-50 to-indigo-100',
@@ -76,8 +66,8 @@ const DashboardStats = ({ stats, orders }) => {
     },
     {
       title: 'Menu Items',
-      value: stats.menuItems.current,
-      growth: `${stats.menuItems.growth}% growth`,
+      value: safeStats.menuItems.current || '0',
+      growth: `${safeStats.menuItems.growth || 0}% growth`,
       icon: Package,
       gradient: 'from-orange-500 to-orange-600',
       bgGradient: 'from-orange-50 to-orange-100',
@@ -85,8 +75,8 @@ const DashboardStats = ({ stats, orders }) => {
     },
     {
       title: 'Active Offers',
-      value: stats.activeOffers.current,
-      growth: `+${stats.activeOffers.growth}%`,
+      value: safeStats.activeOffers.current || '0',
+      growth: `+${safeStats.activeOffers.growth || 0}%`,
       icon: Percent,
       gradient: 'from-pink-500 to-rose-600',
       bgGradient: 'from-pink-50 to-rose-100',
@@ -96,15 +86,19 @@ const DashboardStats = ({ stats, orders }) => {
 
   // Function to calculate user-related stats
   const calculateUserStats = () => {
-    const totalUsers = stats.totalUsers || 0;
-    const activeCustomers = stats.customers.current || 0;
-    const userGrowth = stats.userGrowth || 0;
+    const totalUsers = Number(safeStats.totalUsers) || 0;
+    const activeCustomers = Number(safeStats.customers.current) || 0;
+    const userGrowth = Number(safeStats.userGrowth) || 0;
+    
+    const conversionRate = totalUsers > 0 ? 
+      ((activeCustomers / totalUsers) * 100).toFixed(1) : 
+      '0.0';
     
     return {
       totalUsers,
       activeCustomers,
       userGrowth,
-      conversionRate: activeCustomers > 0 ? ((activeCustomers / totalUsers) * 100).toFixed(1) : 0
+      conversionRate
     };
   };
 
@@ -112,7 +106,12 @@ const DashboardStats = ({ stats, orders }) => {
 
   return (
     <div className="space-y-10">
-      {/* Stats Cards - Updated grid for 6 cards */}
+      {/* Debug info - remove in production */}
+      <div className="text-xs text-gray-500 bg-gray-100 p-2 rounded">
+        Debug: totalUsers = {safeStats.totalUsers}, userGrowth = {safeStats.userGrowth}
+      </div>
+
+      {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-6 mb-10">
         {statCards.map((stat, index) => (
           <div
@@ -222,7 +221,7 @@ const DashboardStats = ({ stats, orders }) => {
         <div className="space-y-4">
           {orders.slice(0, 5).map((order) => (
             <div
-              key={order._id}
+              key={order._id || order.id}
               className="flex items-center justify-between p-6 bg-gradient-to-r from-gray-50 to-white rounded-2xl border border-gray-100 hover:shadow-md transition-all duration-200"
             >
               <div className="flex items-center gap-4">
@@ -230,24 +229,32 @@ const DashboardStats = ({ stats, orders }) => {
                   <ShoppingBag className="w-6 h-6 text-white" />
                 </div>
                 <div>
-                  <p className="font-bold text-gray-900">{order.orderNumber || `Order #${order._id?.slice(-6)}`}</p>
+                  <p className="font-bold text-gray-900">
+                    {order.orderNumber || `Order #${(order._id || order.id)?.slice(-6) || '000000'}`}
+                  </p>
                   <p className="text-sm text-gray-600 flex items-center gap-2 mt-1">
                     <Users className="w-4 h-4" />
                     {order.userId?.fullName || order.customerName || 'User'}
                     <span className="text-xs text-gray-400">
-                      (ID: {order.userId?._id?.slice(-6) || 'N/A'})
+                      (ID: {(order.userId?._id || order.userId?.id)?.slice(-6) || 'N/A'})
                     </span>
                   </p>
                 </div>
               </div>
               <div className="text-right">
-                <p className="font-bold text-lg text-gray-900">{formatCurrency(order.total)}</p>
+                <p className="font-bold text-lg text-gray-900">
+                  {formatCurrency(order.total || order.amount || 0)}
+                </p>
                 <span
-                  className={`inline-flex px-3 py-1 text-xs font-semibold rounded-full border ${getStatusColor(
-                    order.status
-                  )}`}
+                  className={`inline-flex px-3 py-1 text-xs font-semibold rounded-full border ${
+                    (order.status || 'pending') === 'pending' ? 'bg-amber-100 text-amber-800 border-amber-200' :
+                    (order.status || 'pending') === 'confirmed' ? 'bg-blue-100 text-blue-800 border-blue-200' :
+                    (order.status || 'pending') === 'delivered' ? 'bg-emerald-100 text-emerald-800 border-emerald-200' :
+                    (order.status || 'pending') === 'cancelled' ? 'bg-red-100 text-red-800 border-red-200' :
+                    'bg-gray-100 text-gray-800 border-gray-200'
+                  }`}
                 >
-                  {order.status}
+                  {order.status || 'pending'}
                 </span>
               </div>
             </div>
